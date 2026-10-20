@@ -1,0 +1,243 @@
+﻿
+name: catalog-dev
+
+services:
+
+  # ----------------------------------
+  # MYSQL - CQRS WRITE DATABASE
+  # ----------------------------------
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: catalog_write
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3307:3306"
+
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # ----------------------------------
+  # MONGODB - CQRS READ DATABASE
+  # ----------------------------------
+  mongodb:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+
+    ports:
+      - "127.0.0.1:27018:27017"
+
+    volumes:
+      - mongo_data:/data/db
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          mongosh --quiet
+          --username "$$MONGO_INITDB_ROOT_USERNAME"
+          --password "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin
+          --eval 'quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)'
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # ----------------------------------
+  # MONGODB SETUP - COLLECTIONS / INDEXES
+  # ----------------------------------
+  mongo-setup:
+    image: mongo:8
+
+    environment:
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+
+    entrypoint: ["/bin/sh", "-ec"]
+
+    command:
+      - >
+        exec mongosh
+        --host mongodb
+        --username "$$MONGO_USER"
+        --password "$$MONGO_PASSWORD"
+        --authenticationDatabase admin
+        /scripts/setup.js
+
+    volumes:
+      - ./Database/Mongo/setup.js:/scripts/setup.js:ro
+
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+    restart: "no"
+
+  # ----------------------------------
+  # RABBITMQ - MESSAGE BROKER
+  # ----------------------------------
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
+
+    ports:
+      - "127.0.0.1:5673:5672"
+      - "127.0.0.1:15673:15672"
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # ----------------------------------
+  # FLYWAY - MYSQL MIGRATIONS
+  # ----------------------------------
+  flyway:
+    image: flyway/flyway:13.7.0
+    command: migrate
+
+    environment:
+      FLYWAY_URL: "jdbc:mysql://mysql:3306/catalog_write?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: ${MYSQL_USER}
+      FLYWAY_PASSWORD: ${MYSQL_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+    volumes:
+      - ./Database/Migrations:/flyway/sql:ro
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+    restart: "no"
+
+  # ----------------------------------
+  # CATALOG API
+  # ----------------------------------
+  catalog-api:
+    profiles:
+      - api
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      # MySQL - WRITE DATABASE
+      ConnectionStrings__CatalogWrite: "server=mysql;port=3306;database=catalog_write;user=${MYSQL_USER};password=${MYSQL_PASSWORD}"
+
+      # MongoDB - READ DATABASE
+      Mongo__ConnectionString: "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/?authSource=admin"
+      Mongo__DatabaseName: catalog_read
+      Mongo__CollectionName: items
+
+      # RabbitMQ - EVENT PUBLISHING
+      RabbitMq__Uri: "amqp://${RABBIT_USER}:${RABBIT_PASSWORD}@rabbitmq:5672/"
+      RabbitMq__Exchange: catalog.events
+
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+
+      mongo-setup:
+        condition: service_completed_successfully
+
+      rabbitmq:
+        condition: service_started
+
+  # ----------------------------------
+  # MYSQL DEVELOPMENT SEED
+  # ----------------------------------
+  mysql-seed:
+    image: mysql:8.4
+    profiles:
+      - seed
+
+    environment:
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PWD: ${MYSQL_PASSWORD}
+
+    volumes:
+      - ./Database/Seeds/mysql_seed.sql:/seeds/seed.sql:ro
+
+    entrypoint: ["/bin/sh", "-ec"]
+
+    command:
+      - >
+        exec mysql
+        -h mysql
+        -u "$$MYSQL_USER"
+        catalog_write
+        < /seeds/seed.sql
+
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+
+    restart: "no"
+
+  # ----------------------------------
+  # MONGODB DEVELOPMENT SEED
+  # ----------------------------------
+  mongo-seed:
+    image: mongo:8
+    profiles:
+      - seed
+
+    environment:
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+
+    volumes:
+      - ./Database/Seeds/mongo_seed.js:/seeds/seed.js:ro
+
+    entrypoint: ["/bin/sh", "-ec"]
+
+    command:
+      - >
+        exec mongosh
+        --host mongodb
+        --username "$$MONGO_USER"
+        --password "$$MONGO_PASSWORD"
+        --authenticationDatabase admin
+        /seeds/seed.js
+
+    depends_on:
+      mongo-setup:
+        condition: service_completed_successfully
+
+    restart: "no"
+
+volumes:
+  mysql_data:
+  mongo_data:
+  rabbitmq_data:
