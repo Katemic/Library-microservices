@@ -361,3 +361,13 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Environment variables
+.env
+**/.env
+
+# Local development files
+bin/
+obj/
+.vs/
+*.csproj.user
