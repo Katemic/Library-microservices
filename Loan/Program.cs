@@ -1,6 +1,16 @@
+using Loan.Data;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+
+var connectionString = builder.Configuration.GetConnectionString("LoanWrite")
+    ?? throw new InvalidOperationException("Loan MySQL connection string is missing");
+
+builder.Services.AddDbContext<LoanDbContext>(options => options.UseMySql(
+    connectionString,
+    new MySqlServerVersion(new Version(8, 4, 0))));
 
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle

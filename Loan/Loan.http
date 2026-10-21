@@ -1,6 +1,15 @@
 @Loan_HostAddress = http://localhost:5255
 
-GET {{Loan_HostAddress}}/weatherforecast/
+GET {{Loan_HostAddress}}/api/loans
 Accept: application/json
 
 ###
+
+POST {{Loan_HostAddress}}/api/loans
+Content-Type: application/json
+
+{
+	"itemId": 103,
+	"loanerId": 9003,
+	"dueAtUtc": "2026-11-04T09:00:00Z"
+}

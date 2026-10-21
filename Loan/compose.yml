@@ -1,0 +1,83 @@
+name: loan-dev
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: loan_write
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "127.0.0.1:3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1' > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  flyway:
+    image: flyway/flyway:13.7.0
+    command: migrate
+    environment:
+      FLYWAY_URL: jdbc:mysql://mysql:3306/loan_write?allowPublicKeyRetrieval=true&useSSL=false
+      FLYWAY_USER: ${MYSQL_USER}
+      FLYWAY_PASSWORD: ${MYSQL_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+    volumes:
+      - ./Database/Migrations:/flyway/sql:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBIT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
+    ports:
+      - "127.0.0.1:5674:5672"
+      - "127.0.0.1:15674:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  loan-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__LoanWrite: server=mysql;port=3306;database=loan_write;user=${MYSQL_USER};password=${MYSQL_PASSWORD}
+      RabbitMq__Uri: amqp://${RABBIT_USER}:${RABBIT_PASSWORD}@rabbitmq:5672/
+      RabbitMq__Exchange: loan.events
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_started
+
+  mysql-seed:
+    image: mysql:8.4
+    profiles: [seed]
+    environment:
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PWD: ${MYSQL_PASSWORD}
+    volumes:
+      - ./Database/Seeds/mysql_seed.sql:/seeds/seed.sql:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["exec mysql -h mysql -u \"$$MYSQL_USER\" loan_write < /seeds/seed.sql"]
+    depends_on:
+      flyway:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
