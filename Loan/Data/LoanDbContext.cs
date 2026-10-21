@@ -13,10 +13,21 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
         {
             entity.ToTable("loan");
             entity.HasKey(loan => loan.Id);
-            entity.Property(loan => loan.ItemId).IsRequired();
-            entity.Property(loan => loan.LoanerId).IsRequired();
-            entity.Property(loan => loan.LoanedAtUtc).IsRequired();
-            entity.Property(loan => loan.DueAtUtc).IsRequired();
+            entity.Property(loan => loan.Id).HasColumnName("id");
+            entity.Property(loan => loan.ItemId)
+                .HasColumnName("item_id")
+                .IsRequired();
+            entity.Property(loan => loan.LoanerId)
+                .HasColumnName("loaner_id")
+                .IsRequired();
+            entity.Property(loan => loan.LoanedAtUtc)
+                .HasColumnName("loaned_at_utc")
+                .IsRequired();
+            entity.Property(loan => loan.DueAtUtc)
+                .HasColumnName("due_at_utc")
+                .IsRequired();
+            entity.Property(loan => loan.ReturnedAtUtc)
+                .HasColumnName("returned_at_utc");
         });
     }
 }
