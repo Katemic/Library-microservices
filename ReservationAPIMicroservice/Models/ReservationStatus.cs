@@ -1,6 +1,10 @@
 ﻿namespace ReservationAPIMicroservice.Models
 {
-    public class ReservationStatus
+    public enum ReservationStatus
     {
+        Pending = 0,
+        Processing = 1,
+        Confirmed = 2,
+        Failed = 3
     }
 }

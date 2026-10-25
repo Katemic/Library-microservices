@@ -1,17 +1,23 @@
-
 services:
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: reservation-sql
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: Developer
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
-    ports:
-      - "1433:1433"
-    volumes:
-      - sql_data:/var/opt/mssql
+  mysql:
+    image: mysql:8.4
+    container_name: reservation-mysql
     restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ReservationDb
+      MYSQL_USER: reservationuser
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p$${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   rabbitmq:
     image: rabbitmq:4-management
@@ -28,12 +34,12 @@ services:
 
   api:
     build:
-      context: ./ReservationApi
+      context: ./ReservationAPIMicroservice
       dockerfile: Dockerfile
     container_name: reservation-api
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=ReservationDb;User Id=sa;Password=${SA_PASSWORD};Encrypt=False;TrustServerCertificate=True"
+      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=ReservationDb;User ID=reservationuser;Password=${MYSQL_PASSWORD}"
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Port: 5672
       RabbitMQ__User: ${RABBITMQ_USER}
@@ -41,10 +47,12 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - sqlserver
-      - rabbitmq
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
-  sql_data:
+  mysql_data:
   rabbit_data:
