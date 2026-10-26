@@ -1,9 +1,12 @@
-using Catalog.Persistence.Write;
-using Microsoft.EntityFrameworkCore;
-using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
-using Catalog.Persistence.Read;
-using MongoDB.Driver;
 using Catalog.GraphQL;
+using Catalog.Messaging;
+using Catalog.Persistence.Read;
+using Catalog.Persistence.Write;
+using Catalog.Services;
+using Catalog.Workers;
+using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 
 
@@ -66,8 +69,18 @@ builder.Services.AddSingleton<
 //graphql stuff
 builder.Services
     .AddGraphQLServer()
-    .AddQueryType<Query>();
+    .AddQueryType<Query>()
+    .AddMutationType<Mutation>();
 
+
+//command service
+builder.Services.AddScoped<CatalogCommandService>();
+
+//RabbitMQ event publisher
+builder.Services.AddSingleton<CatalogEventPublisher>();
+
+//background worker for outbox processing
+builder.Services.AddHostedService<CatalogOutboxWorker>();
 
 // Add services to the container.
 
