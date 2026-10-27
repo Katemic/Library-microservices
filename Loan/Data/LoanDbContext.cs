@@ -14,8 +14,16 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
             entity.ToTable("loan");
             entity.HasKey(loan => loan.Id);
             entity.Property(loan => loan.Id).HasColumnName("id");
+            entity.Property(loan => loan.Status)
+                .HasColumnName("status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
             entity.Property(loan => loan.ItemId)
                 .HasColumnName("item_id")
+                .IsRequired();
+            entity.Property(loan => loan.ItemName)
+                .HasColumnName("item_name")
                 .IsRequired();
             entity.Property(loan => loan.LoanerId)
                 .HasColumnName("loaner_id")
