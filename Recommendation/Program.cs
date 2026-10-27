@@ -1,4 +1,6 @@
 using Neo4j.Driver;
+using Recommendation.Consumers;
+using Recommendation.Persistence;
 
 internal class Program
 {
@@ -17,7 +19,8 @@ internal class Program
                     config["Neo4j:Password"]!));
         });
 
- //       builder.Services.AddHostedService<RecommendationConsumer>();
+        builder.Services.AddSingleton<GraphRepository>();
+        builder.Services.AddHostedService<RecommendationConsumer>();
 
         var app = builder.Build();
 
