@@ -62,7 +62,7 @@ public class ReservationConsumer : BackgroundService
                             ea.Body.ToArray());
 
                         var reservation =
-                            JsonSerializer.Deserialize<Reservation>(json);
+                            JsonSerializer.Deserialize<ReservationOld>(json);
 
                         if (reservation is null)
                         {

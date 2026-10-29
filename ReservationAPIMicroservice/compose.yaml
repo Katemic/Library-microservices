@@ -34,7 +34,7 @@ services:
 
   api:
     build:
-      context: ./ReservationAPIMicroservice
+      context: ./
       dockerfile: Dockerfile
     container_name: reservation-api
     environment:

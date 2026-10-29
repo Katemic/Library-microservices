@@ -21,7 +21,7 @@ public class RabbitMqPublisher
     }
 
     public async Task PublishReservationAsync(
-        Reservation reservation,
+        ReservationOld reservation,
         CancellationToken cancellationToken = default)
     {
         await using var connection =
