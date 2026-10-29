@@ -43,10 +43,10 @@ CREATE TABLE IF NOT EXISTS Reservation (
 -- Test data insertion
 -- 1. Insert items (IDs are manually assigned)
 INSERT INTO Item (id, name, isDeleted) VALUES
-(1, 'Laptop', FALSE),
-(2, 'Projector', FALSE),
-(3, 'Wireless Mouse', FALSE),
-(4, 'Old Keyboard', TRUE);
+(1, 'Hunger Games', FALSE),
+(2, 'Searching for the meaning of life', FALSE),
+(3, 'WoW Guide', FALSE),
+(4, 'Fidget Spinners History', TRUE);
 
 -- 2. Insert inventory
 INSERT INTO Inventory (id, status, barcode, placement, item) VALUES
