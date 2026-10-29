@@ -1,6 +1,8 @@
 
 using Microsoft.EntityFrameworkCore;
+using RabbitMQ.Client;
 using ReservationAPIMicroservice.Data;
+using ReservationAPIMicroservice.Services;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +17,28 @@ builder.Services.AddDbContext<ReservationDbContext>(options =>
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// RabbitMQ
+var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
+var rabbitPort = int.Parse(
+    builder.Configuration["RabbitMQ:Port"] ?? "5672");
+
+builder.Services.AddSingleton<IConnection>(_ =>
+{
+    var factory = new ConnectionFactory
+    {
+        HostName = rabbitHost,
+        Port = rabbitPort,
+        UserName = builder.Configuration["RabbitMQ:User"] ?? "guest",
+        Password = builder.Configuration["RabbitMQ:Password"] ?? "guest"
+    };
+
+    return factory.CreateConnectionAsync()
+        .GetAwaiter()
+        .GetResult();
+});
+
+builder.Services.AddSingleton<RabbitMqPublisher>();
 
 var app = builder.Build();
 

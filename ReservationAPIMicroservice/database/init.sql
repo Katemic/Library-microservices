@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS Item (
 
 -- 2. Inventory table
 CREATE TABLE IF NOT EXISTS Inventory (
-    id INT NOT NULL AUTO_INCREMENT,
+    id INT NOT NULL,
     status ENUM('AVAILABLE', 'RESERVED', 'UNAVAILABLE') NOT NULL DEFAULT 'AVAILABLE',
     barcode VARCHAR(255) NOT NULL UNIQUE,
     placement VARCHAR(255) NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS Inventory (
 
 -- 3. Reservation table
 CREATE TABLE IF NOT EXISTS Reservation (
-    id INT NOT NULL,
+    id INT NOT NULL AUTO_INCREMENT,
     UserID INT NOT NULL,
     reservationTime DATETIME NOT NULL,
     status ENUM('PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED') NOT NULL DEFAULT 'PENDING',
@@ -49,20 +49,20 @@ INSERT INTO Item (id, name, isDeleted) VALUES
 (4, 'Old Keyboard', TRUE);
 
 -- 2. Insert inventory
-INSERT INTO Inventory (status, barcode, placement, item) VALUES
-('AVAILABLE', 'BC1001', 'Shelf A1', 1),
-('RESERVED', 'BC1002', 'Shelf A2', 1),
-('AVAILABLE', 'BC2001', 'Shelf B1', 2),
-('UNAVAILABLE', 'BC3001', 'Shelf C1', 3),
-('AVAILABLE', 'BC3002', 'Shelf C2', 3),
-('UNAVAILABLE', 'BC4001', 'Storage D1', 4);
+INSERT INTO Inventory (id, status, barcode, placement, item) VALUES
+(1, 'AVAILABLE', 'BC1001', 'Shelf A1', 1),
+(2, 'RESERVED', 'BC1002', 'Shelf A2', 1),
+(3, 'AVAILABLE', 'BC2001', 'Shelf B1', 2),
+(4, 'UNAVAILABLE', 'BC3001', 'Shelf C1', 3),
+(5, 'AVAILABLE', 'BC3002', 'Shelf C2', 3),
+(6, 'UNAVAILABLE', 'BC4001', 'Storage D1', 4);
 
 -- 3. Insert reservations
 INSERT INTO Reservation
     (UserID, reservationTime, status, queueNumber, item)
 VALUES
-(101, '2026-10-29 09:00:00', 'CONFIRMED', 1, 1),
-(102, '2026-10-29 09:30:00', 'PENDING',   2, 2),
-(103, '2026-10-29 10:00:00', 'COMPLETED', 1, 3),
-(101, '2026-10-29 11:00:00', 'CANCELLED', 3, 1),
+(101, '2026-10-29 09:00:00', 'CONFIRMED', 0, 1),
+(102, '2026-10-29 09:30:00', 'CONFIRMED',   0, 2),
+(103, '2026-10-29 10:00:00', 'COMPLETED', 0, 3),
+(101, '2026-10-29 11:00:00', 'PENDING', 1, 1),
 (104, '2026-10-30 13:00:00', 'PENDING',   1, 3);
