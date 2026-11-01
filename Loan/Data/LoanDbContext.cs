@@ -11,6 +11,8 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
 
     public DbSet<Fine> Fines => Set<Fine>();
 
+    public DbSet<CatalogItemSnapshot> ItemSnapshots => Set<CatalogItemSnapshot>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Loan.Models.Loan>(entity =>
@@ -95,6 +97,22 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
                 .HasColumnName("due_at_utc")
                 .IsRequired();
             entity.HasIndex(fine => fine.LoanId).IsUnique();
+        });
+
+        modelBuilder.Entity<CatalogItemSnapshot>(entity =>
+        {
+            entity.ToTable("item");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Id).HasColumnName("id");
+            entity.Property(item => item.Name)
+                .HasColumnName("name")
+                .HasMaxLength(255)
+                .IsRequired();
+            entity.Property(item => item.IsDeleted)
+                .HasColumnName("is_deleted")
+                .IsRequired();
+            entity.Property(item => item.DeletedAtUtc)
+                .HasColumnName("deleted_at_utc");
         });
     }
 }

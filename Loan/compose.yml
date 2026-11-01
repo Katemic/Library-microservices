@@ -57,6 +57,7 @@ services:
       ConnectionStrings__LoanWrite: server=mysql;port=3306;database=loan_write;user=${MYSQL_USER};password=${MYSQL_PASSWORD}
       RabbitMq__Uri: amqp://${RABBIT_USER}:${RABBIT_PASSWORD}@rabbitmq:5672/
       RabbitMq__Exchange: loan.events
+      CatalogRabbitMq__Exchange: catalog.events
     depends_on:
       flyway:
         condition: service_completed_successfully

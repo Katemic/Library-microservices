@@ -12,6 +12,14 @@ CREATE TABLE IF NOT EXISTS `loan` (
     INDEX `idx_loan_loaner_id` (`loaner_id`)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
+CREATE TABLE IF NOT EXISTS `item` (
+    `id` INT NOT NULL,
+    `name` VARCHAR(255) NOT NULL,
+    `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE,
+    `deleted_at_utc` DATETIME(6) NULL,
+    PRIMARY KEY (`id`)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS `inventory` (
     `id` INT NOT NULL AUTO_INCREMENT,
     `item_id` INT NOT NULL,
