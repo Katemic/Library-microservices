@@ -13,7 +13,11 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1' > /dev/null 2>&1"]
+      test:
+        [
+          "CMD-SHELL",
+          "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h 127.0.0.1 -u $$MYSQL_USER $$MYSQL_DATABASE -e 'SELECT 1' > /dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -73,7 +77,8 @@ services:
     volumes:
       - ./Database/Seeds/mysql_seed.sql:/seeds/seed.sql:ro
     entrypoint: ["/bin/sh", "-ec"]
-    command: ["exec mysql -h mysql -u \"$$MYSQL_USER\" loan_write < /seeds/seed.sql"]
+    command:
+      ['exec mysql -h mysql -u "$$MYSQL_USER" loan_write < /seeds/seed.sql']
     depends_on:
       flyway:
         condition: service_completed_successfully
