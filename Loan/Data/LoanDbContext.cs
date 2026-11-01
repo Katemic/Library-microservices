@@ -63,11 +63,6 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
                 .HasColumnName("placement")
                 .HasMaxLength(128)
                 .IsRequired();
-            entity.Property(inventory => inventory.IsDeleted)
-                .HasColumnName("is_deleted")
-                .IsRequired();
-            entity.Property(inventory => inventory.DeletedAtUtc)
-                .HasColumnName("deleted_at_utc");
             entity.HasIndex(inventory => inventory.ItemId).IsUnique();
         });
 

@@ -11,10 +11,6 @@ public class Inventory
     public string Barcode { get; set; } = string.Empty;
 
     public string Placement { get; set; } = string.Empty;
-
-    public bool IsDeleted { get; set; }
-
-    public DateTime? DeletedAtUtc { get; set; }
 }
 
 public enum InventoryStatus

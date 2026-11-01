@@ -37,11 +37,6 @@ public class LoansController(
             .SingleOrDefaultAsync(item => item.ItemId == loan.ItemId, cancellationToken);
         var inventoryWasCreated = inventory is null;
 
-        if (inventory is not null && inventory.IsDeleted)
-        {
-            return Conflict("This item has deleted inventory and cannot be loaned.");
-        }
-
         if (inventory is null)
         {
             inventory = new Inventory

@@ -18,7 +18,6 @@ public class InventoryController(
     {
         return await dbContext.Inventories
             .AsNoTracking()
-            .Where(inventory => !inventory.IsDeleted)
             .OrderBy(inventory => inventory.ItemId)
             .ToListAsync(cancellationToken);
     }
@@ -38,8 +37,6 @@ public class InventoryController(
 
         inventory.Id = 0;
         inventory.Status = InventoryStatus.Available;
-        inventory.IsDeleted = false;
-        inventory.DeletedAtUtc = null;
         dbContext.Inventories.Add(inventory);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -63,9 +60,7 @@ public class InventoryController(
         CancellationToken cancellationToken)
     {
         var inventory = await dbContext.Inventories
-            .SingleOrDefaultAsync(
-                item => item.ItemId == itemId && !item.IsDeleted,
-                cancellationToken);
+            .SingleOrDefaultAsync(item => item.ItemId == itemId, cancellationToken);
 
         if (inventory is null)
         {
@@ -112,8 +107,7 @@ public class InventoryController(
             return Conflict("Inventory cannot be deleted while the item is on loan.");
         }
 
-        inventory.IsDeleted = true;
-        inventory.DeletedAtUtc = DateTime.UtcNow;
+        dbContext.Inventories.Remove(inventory);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         await publisher.PublishAsync(
