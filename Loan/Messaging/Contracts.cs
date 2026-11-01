@@ -29,3 +29,34 @@ public record InventoryUpdatedEvent(
     string Placement);
 
 public record InventoryDeletedEvent(int Id, int ItemId);
+
+public record FineCreatedEvent(
+    int Id,
+    int LoanId,
+    int LoanerId,
+    int ItemId,
+    string ItemName,
+    decimal Amount,
+    string Status,
+    DateTime CreatedDate,
+    DateTime DueDate);
+
+public record FinePaidEvent(
+    int Id,
+    int LoanId,
+    int LoanerId,
+    int ItemId,
+    string ItemName,
+    decimal Amount,
+    string Status,
+    DateTime PaidDate);
+
+public record FineOverdueEvent(
+    int Id,
+    int LoanId,
+    int LoanerId,
+    int ItemId,
+    string ItemName,
+    decimal Amount,
+    string Status,
+    DateTime DueDate);

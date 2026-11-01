@@ -55,6 +55,47 @@ public class OverdueLoanWorker(
                     loan.ItemName,
                     loan.DueAtUtc),
                 cancellationToken);
+
+            var fine = new Fine
+            {
+                LoanId = loan.Id,
+                LoanerId = loan.LoanerId,
+                ItemId = loan.ItemId,
+                ItemName = loan.ItemName,
+                Amount = 10.00m,
+                Status = FineStatus.Overdue,
+                CreatedAtUtc = now,
+                DueAtUtc = loan.DueAtUtc
+            };
+
+            dbContext.Fines.Add(fine);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            await publisher.PublishAsync(
+                "Fine.Created",
+                new FineCreatedEvent(
+                    fine.Id,
+                    fine.LoanId,
+                    fine.LoanerId,
+                    fine.ItemId,
+                    fine.ItemName,
+                    fine.Amount,
+                    fine.Status.ToString(),
+                    fine.CreatedAtUtc,
+                    fine.DueAtUtc),
+                cancellationToken);
+            await publisher.PublishAsync(
+                "Fine.Overdue",
+                new FineOverdueEvent(
+                    fine.Id,
+                    fine.LoanId,
+                    fine.LoanerId,
+                    fine.ItemId,
+                    fine.ItemName,
+                    fine.Amount,
+                    fine.Status.ToString(),
+                    fine.DueAtUtc),
+                cancellationToken);
         }
 
         logger.LogInformation(

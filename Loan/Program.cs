@@ -16,7 +16,6 @@ builder.Services.AddDbContext<LoanDbContext>(options => options.UseMySql(
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection("RabbitMq"));
 builder.Services.AddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
-builder.Services.AddHostedService<InventoryEventConsumer>();
 builder.Services.AddHostedService<OverdueLoanWorker>();
 
 builder.Services.AddControllers();

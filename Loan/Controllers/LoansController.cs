@@ -35,10 +35,55 @@ public class LoansController(
 
         dbContext.Loans.Add(loan);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var inventory = await dbContext.Inventories
+            .SingleOrDefaultAsync(item => item.ItemId == loan.ItemId, cancellationToken);
+        var inventoryWasCreated = inventory is null;
+
+        if (inventory is null)
+        {
+            inventory = new Inventory
+            {
+                ItemId = loan.ItemId,
+                Status = InventoryStatus.Loaned,
+                Barcode = string.Empty,
+                Placement = string.Empty
+            };
+            dbContext.Inventories.Add(inventory);
+        }
+        else
+        {
+            inventory.Status = InventoryStatus.Loaned;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
         await publisher.PublishAsync(
             "Loan.Created",
             new LoanCreatedEvent(loan.Id, loan.LoanerId, loan.ItemId),
             cancellationToken);
+        if (inventoryWasCreated)
+        {
+            await publisher.PublishAsync(
+                "Inventory.Created",
+                new InventoryCreatedEvent(
+                    inventory.Id,
+                    inventory.ItemId,
+                    inventory.Status.ToString(),
+                    inventory.Barcode,
+                    inventory.Placement),
+                cancellationToken);
+        }
+        else
+        {
+            await publisher.PublishAsync(
+                "Inventory.Updated",
+                new InventoryUpdatedEvent(
+                    inventory.Id,
+                    inventory.ItemId,
+                    inventory.Status.ToString(),
+                    inventory.Barcode,
+                    inventory.Placement),
+                cancellationToken);
+        }
 
         return CreatedAtAction(nameof(GetAll), new { id = loan.Id }, loan);
     }
@@ -62,7 +107,15 @@ public class LoansController(
         }
 
         loan.ReturnedAtUtc = DateTime.UtcNow;
-    loan.Status = LoanStatus.Returned;
+        loan.Status = LoanStatus.Returned;
+        var inventory = await dbContext.Inventories
+            .SingleOrDefaultAsync(item => item.ItemId == loan.ItemId, cancellationToken);
+
+        if (inventory is not null)
+        {
+            inventory.Status = InventoryStatus.Available;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         await publisher.PublishAsync(
             "Loan.Returned",
@@ -72,6 +125,19 @@ public class LoansController(
                 loan.ItemName,
                 loan.ReturnedAtUtc.Value),
             cancellationToken);
+
+        if (inventory is not null)
+        {
+            await publisher.PublishAsync(
+                "Inventory.Updated",
+                new InventoryUpdatedEvent(
+                    inventory.Id,
+                    inventory.ItemId,
+                    inventory.Status.ToString(),
+                    inventory.Barcode,
+                    inventory.Placement),
+                cancellationToken);
+        }
 
         return Ok(loan);
     }
