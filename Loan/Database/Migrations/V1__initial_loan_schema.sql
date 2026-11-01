@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS `inventory` (
     `status` ENUM('Available', 'Loaned', 'Unavailable') NOT NULL DEFAULT 'Available',
     `barcode` VARCHAR(128) NOT NULL,
     `placement` VARCHAR(128) NOT NULL,
+    `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE,
+    `deleted_at_utc` DATETIME(6) NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_inventory_item_id` (`item_id`)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;

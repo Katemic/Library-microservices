@@ -33,11 +33,14 @@ public class LoansController(
             : loan.LoanedAtUtc.ToUniversalTime();
         loan.DueAtUtc = loan.DueAtUtc.ToUniversalTime();
 
-        dbContext.Loans.Add(loan);
-        await dbContext.SaveChangesAsync(cancellationToken);
         var inventory = await dbContext.Inventories
             .SingleOrDefaultAsync(item => item.ItemId == loan.ItemId, cancellationToken);
         var inventoryWasCreated = inventory is null;
+
+        if (inventory is not null && inventory.IsDeleted)
+        {
+            return Conflict("This item has deleted inventory and cannot be loaned.");
+        }
 
         if (inventory is null)
         {
@@ -55,6 +58,7 @@ public class LoansController(
             inventory.Status = InventoryStatus.Loaned;
         }
 
+        dbContext.Loans.Add(loan);
         await dbContext.SaveChangesAsync(cancellationToken);
         await publisher.PublishAsync(
             "Loan.Created",
