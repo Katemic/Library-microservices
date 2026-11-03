@@ -13,7 +13,7 @@ namespace Catalog.GraphQL
             CancellationToken ct)
         {
             return await collection
-                .Find(x => !x.IsDeleted != true)
+                .Find(x => x.IsDeleted != true)
                 .Limit(50)
                 .ToListAsync(ct);
         }

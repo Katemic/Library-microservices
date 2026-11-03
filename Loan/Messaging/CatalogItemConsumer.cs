@@ -41,7 +41,7 @@ public sealed class CatalogItemConsumer(
         await channel.QueueBindAsync(
             QueueName,
             exchange,
-            "catalog.item.*",
+            "catalog.item.added", //TEST of only added queue
             cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
@@ -85,7 +85,7 @@ public sealed class CatalogItemConsumer(
         using var document = JsonDocument.Parse(
             Encoding.UTF8.GetString(eventArgs.Body.ToArray()));
         var root = document.RootElement;
-        var itemId = ReadInt(root, "ItemId", "Id");
+        var itemId = ReadInt(root, "itemId");
 
         using var scope = scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<LoanDbContext>();
@@ -103,11 +103,15 @@ public sealed class CatalogItemConsumer(
         }
         else
         {
-            var item = root.TryGetProperty("Item", out var nested)
+            var item = root.TryGetProperty("item", out var nested)
                 ? nested
                 : root;
-            var name = ReadString(item, "Name") ?? string.Empty;
-            var isDeleted = ReadBool(item, "IsDeleted");
+            var name = ReadString(item, "name");
+
+            if (string.IsNullOrWhiteSpace(name))
+                throw new JsonException("Catalog item name is missing.");
+
+            var isDeleted = ReadBool(item, "isDeleted");
 
             if (snapshot is null)
             {

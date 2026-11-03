@@ -33,6 +33,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+//health check endpoint
+app.MapGet("/health", () =>
+    Results.Ok(new { status = "ok", service = "loan" }));
+
 app.UseHttpsRedirection();
 
 app.UseAuthorization();

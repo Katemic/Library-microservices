@@ -89,6 +89,10 @@ var app = builder.Build();
 //more graphql stuff
 app.MapGraphQL("/graphql");
 
+//health check endpoint
+app.MapGet("/health", () =>
+    Results.Ok(new { status = "ok", service = "catalog" }));
+
 
 // Configure the HTTP request pipeline.
 
