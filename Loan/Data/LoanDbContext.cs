@@ -113,6 +113,9 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
                 .IsRequired();
             entity.Property(item => item.DeletedAtUtc)
                 .HasColumnName("deleted_at_utc");
+            entity.Property(item => item.ItemVersion)
+                .HasColumnName("item_version")
+                .IsRequired();
         });
     }
 }

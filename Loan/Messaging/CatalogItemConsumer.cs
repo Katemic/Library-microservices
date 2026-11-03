@@ -1,6 +1,7 @@
-using System.Text;
+
 using System.Text.Json;
 using Loan.Data;
+using Loan.Models;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -10,58 +11,116 @@ namespace Loan.Messaging;
 public sealed class CatalogItemConsumer(
     IConfiguration configuration,
     IServiceScopeFactory scopeFactory,
-    ILogger<CatalogItemConsumer> logger) : BackgroundService
+    ILogger<CatalogItemConsumer> logger
+) : BackgroundService
 {
     private const string QueueName = "loan.catalog.items";
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web);
+
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
     {
         var uri = configuration["RabbitMq:Uri"]
-            ?? throw new InvalidOperationException("RabbitMQ URI is missing");
-        var exchange = configuration["CatalogRabbitMq:Exchange"]
+            ?? throw new InvalidOperationException(
+                "RabbitMQ URI is missing");
+
+        var exchange =
+            configuration["CatalogRabbitMq:Exchange"]
             ?? "catalog.events";
 
-        var factory = new ConnectionFactory { Uri = new Uri(uri) };
-        await using var connection = await factory.CreateConnectionAsync(stoppingToken);
-        await using var channel = await connection.CreateChannelAsync(
-            cancellationToken: stoppingToken);
+        var factory = new ConnectionFactory
+        {
+            Uri = new Uri(uri)
+        };
 
+        await using var connection =
+            await factory.CreateConnectionAsync(stoppingToken);
+
+        await using var channel =
+            await connection.CreateChannelAsync(
+                cancellationToken: stoppingToken);
+
+        // Declare the existing exchange and queue
         await channel.ExchangeDeclareAsync(
             exchange,
             ExchangeType.Topic,
             durable: true,
             autoDelete: false,
             cancellationToken: stoppingToken);
+
         await channel.QueueDeclareAsync(
             QueueName,
             durable: true,
             exclusive: false,
             autoDelete: false,
             cancellationToken: stoppingToken);
+
+        // Subscribe to added, updated and deleted
         await channel.QueueBindAsync(
             QueueName,
             exchange,
-            "catalog.item.added", //TEST of only added queue
+            "catalog.item.*",
+            cancellationToken: stoppingToken);
+
+        await channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: 1,
+            global: false,
             cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
-        consumer.ReceivedAsync += async (_, eventArgs) =>
+
+        consumer.ReceivedAsync += async (_, args) =>
         {
             try
             {
                 await HandleEventAsync(
-                    channel,
-                    eventArgs,
+                    args,
                     stoppingToken);
+
+                // Acknowledge only after successful
+                // database processing.
+                await channel.BasicAckAsync(
+                    args.DeliveryTag,
+                    multiple: false,
+                    cancellationToken: stoppingToken);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Invalid Catalog event {RoutingKey}",
+                    args.RoutingKey);
+
+                // Malformed events should not loop forever.
+                // Add a dead-letter queue for production.
+                await channel.BasicRejectAsync(
+                    args.DeliveryTag,
+                    requeue: false,
+                    cancellationToken: stoppingToken);
+            }
+            catch (OperationCanceledException)
+                when (stoppingToken.IsCancellationRequested)
+            {
+                // Shutdown: unacknowledged deliveries
+                // can be redelivered after reconnection.
             }
             catch (Exception ex)
             {
                 logger.LogError(
                     ex,
-                    "Failed to process Catalog event {RoutingKey}",
-                    eventArgs.RoutingKey);
+                    "Failed to process Catalog event");
+
+                // Simple development retry for
+                // temporary failures.
+                await Task.Delay(
+                    TimeSpan.FromSeconds(2),
+                    stoppingToken);
+
                 await channel.BasicNackAsync(
-                    eventArgs.DeliveryTag,
+                    args.DeliveryTag,
                     multiple: false,
                     requeue: true,
                     cancellationToken: stoppingToken);
@@ -74,95 +133,127 @@ public sealed class CatalogItemConsumer(
             consumer,
             stoppingToken);
 
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        logger.LogInformation(
+            "Loan subscribed to catalog.item.* on {Queue}",
+            QueueName);
+
+        await Task.Delay(
+            Timeout.Infinite,
+            stoppingToken);
     }
 
     private async Task HandleEventAsync(
-        IChannel channel,
-        BasicDeliverEventArgs eventArgs,
-        CancellationToken cancellationToken)
+        BasicDeliverEventArgs args,
+        CancellationToken ct)
     {
-        using var document = JsonDocument.Parse(
-            Encoding.UTF8.GetString(eventArgs.Body.ToArray()));
-        var root = document.RootElement;
-        var itemId = ReadInt(root, "itemId");
+        // Catalog publishes camelCase JSON.
+        // JsonSerializerDefaults.Web handles that.
+        var message =
+            JsonSerializer.Deserialize<CatalogItemEventMessage>(
+                args.Body.ToArray(),
+                JsonOptions);
 
-        using var scope = scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<LoanDbContext>();
-        var snapshot = await dbContext.ItemSnapshots
-            .SingleOrDefaultAsync(item => item.Id == itemId, cancellationToken);
+        if (message?.Item is null)
+            throw new JsonException(
+                "Catalog event has no item");
 
-        if (eventArgs.RoutingKey == "catalog.item.deleted")
+        var validTypes = new[]
         {
-            if (snapshot is not null)
-            {
-                snapshot.IsDeleted = true;
-                snapshot.DeletedAtUtc = DateTime.UtcNow;
-                await dbContext.SaveChangesAsync(cancellationToken);
-            }
+            "catalog.item.added",
+            "catalog.item.updated",
+            "catalog.item.deleted"
+        };
+
+        if (!validTypes.Contains(message.EventType) ||
+            message.EventType != args.RoutingKey)
+            throw new JsonException(
+                "Unsupported or mismatched event type");
+
+        if (message.SchemaVersion != 1)
+            throw new JsonException(
+                "Unsupported event schema version");
+
+        if (message.EventId == Guid.Empty ||
+            message.ItemId <= 0 ||
+            message.ItemVersion <= 0 ||
+            message.Item.Id != message.ItemId ||
+            message.Item.ItemVersion != message.ItemVersion)
+            throw new JsonException(
+                "Invalid Catalog item identifiers or version");
+
+        if (string.IsNullOrWhiteSpace(message.Item.Name) ||
+            message.Item.Name.Length > 255)
+            throw new JsonException(
+                "Invalid Catalog item name");
+
+        var shouldBeDeleted =
+            message.EventType == "catalog.item.deleted";
+
+        if (message.Item.IsDeleted != shouldBeDeleted)
+            throw new JsonException(
+                "Event type and deletion state disagree");
+
+        if (shouldBeDeleted &&
+            message.Item.DeletedAtUtc is null)
+            throw new JsonException(
+                "Deleted event is missing deletion timestamp");
+
+        await using var scope =
+            scopeFactory.CreateAsyncScope();
+
+        var db = scope.ServiceProvider
+            .GetRequiredService<LoanDbContext>();
+
+        var existing = await db.ItemSnapshots
+            .SingleOrDefaultAsync(
+                x => x.Id == message.ItemId,
+                ct);
+
+        if (existing is null)
+        {
+            // First event for this Catalog item.
+            // This can also be a deletion tombstone.
+            db.ItemSnapshots.Add(
+                new CatalogItemSnapshot
+                {
+                    Id = message.ItemId,
+                    Name = message.Item.Name,
+                    ItemVersion = message.ItemVersion,
+                    IsDeleted = shouldBeDeleted,
+                    DeletedAtUtc =
+                        message.Item.DeletedAtUtc
+                });
+
+            await db.SaveChangesAsync(ct);
+        }
+        else if (message.ItemVersion > existing.ItemVersion)
+        {
+            // Only accept newer item versions.
+            existing.Name = message.Item.Name;
+            existing.ItemVersion = message.ItemVersion;
+            existing.IsDeleted = shouldBeDeleted;
+            existing.DeletedAtUtc =
+                message.Item.DeletedAtUtc;
+
+            await db.SaveChangesAsync(ct);
         }
         else
         {
-            var item = root.TryGetProperty("item", out var nested)
-                ? nested
-                : root;
-            var name = ReadString(item, "name");
-
-            if (string.IsNullOrWhiteSpace(name))
-                throw new JsonException("Catalog item name is missing.");
-
-            var isDeleted = ReadBool(item, "isDeleted");
-
-            if (snapshot is null)
-            {
-                dbContext.ItemSnapshots.Add(new Models.CatalogItemSnapshot
-                {
-                    Id = itemId,
-                    Name = name,
-                    IsDeleted = isDeleted,
-                    DeletedAtUtc = isDeleted ? DateTime.UtcNow : null
-                });
-            }
-            else
-            {
-                snapshot.Name = name;
-                snapshot.IsDeleted = isDeleted;
-                snapshot.DeletedAtUtc = isDeleted ? DateTime.UtcNow : null;
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
+            // Same or older version:
+            // already applied or outdated.
+            logger.LogInformation(
+                "Ignoring old/duplicate Catalog event " +
+                "{EventId} for item {ItemId} version {Version}",
+                message.EventId,
+                message.ItemId,
+                message.ItemVersion);
         }
 
-        await channel.BasicAckAsync(
-            eventArgs.DeliveryTag,
-            multiple: false,
-            cancellationToken: cancellationToken);
-    }
-
-    private static int ReadInt(JsonElement element, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (element.TryGetProperty(name, out var value) &&
-                value.TryGetInt32(out var result))
-            {
-                return result;
-            }
-        }
-
-        throw new JsonException("Catalog item ID is missing.");
-    }
-
-    private static string? ReadString(JsonElement element, string name)
-    {
-        return element.TryGetProperty(name, out var value)
-            ? value.GetString()
-            : null;
-    }
-
-    private static bool ReadBool(JsonElement element, string name)
-    {
-        return element.TryGetProperty(name, out var value) &&
-            value.ValueKind == JsonValueKind.True;
+        logger.LogInformation(
+            "Handled {EventType} for item {ItemId}, " +
+            "version {Version}",
+            message.EventType,
+            message.ItemId,
+            message.ItemVersion);
     }
 }
