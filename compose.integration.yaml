@@ -32,6 +32,8 @@ services:
       MYSQL_DATABASE: catalog_write
       MYSQL_USER: catalog
       MYSQL_PASSWORD: ${CATALOG_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:3307:3306"
     volumes:
       - catalog_mysql_data:/var/lib/mysql
     healthcheck:
@@ -139,6 +141,8 @@ services:
       MYSQL_DATABASE: loan_write
       MYSQL_USER: loan_user
       MYSQL_PASSWORD: ${LOAN_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:3308:3306"
     volumes:
       - loan_mysql_data:/var/lib/mysql
     healthcheck:

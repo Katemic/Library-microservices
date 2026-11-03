@@ -75,6 +75,7 @@ builder.Services
 
 //command service
 builder.Services.AddScoped<CatalogCommandService>();
+builder.Services.AddScoped<CatalogItemSnapshotFactory>();
 
 //RabbitMQ event publisher
 builder.Services.AddSingleton<CatalogEventPublisher>();

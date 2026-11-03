@@ -17,5 +17,15 @@ namespace Catalog.GraphQL
                 .Limit(50)
                 .ToListAsync(ct);
         }
+
+        public async Task<CatalogItemDocument?> GetItemByIdAsync(
+            int id,
+            [Service] IMongoCollection<CatalogItemDocument> collection,
+            CancellationToken ct)
+        {
+            return await collection
+                .Find(x => x.Id == id && x.IsDeleted != true)
+                .FirstOrDefaultAsync(ct);
+        }
     }
 }

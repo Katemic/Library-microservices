@@ -78,15 +78,35 @@ namespace Catalog.Workers
                 try
                 {
                     var evt =
-                        JsonSerializer.Deserialize<ItemAddedEvent>(
+                        JsonSerializer.Deserialize<CatalogItemEvent>(
                             message.Payload,
                             JsonOptions
                         ) ?? throw new InvalidOperationException(
                             "Invalid outbox payload");
 
-                    if (evt.EventType != "catalog.item.added")
+
+                    if (evt.EventType is not
+                        ("catalog.item.added" or
+                         "catalog.item.updated" or
+                         "catalog.item.deleted"))
+                    {
                         throw new InvalidOperationException(
-                            "Unsupported event type");
+                            $"Unsupported event type: {evt.EventType}");
+                    }
+
+                    if (evt.Item is null ||
+                        evt.ItemId != message.ItemId ||
+                        evt.ItemVersion != message.ItemVersion ||
+                        evt.EventType != message.EventType ||
+                        evt.Item.Id != evt.ItemId ||
+                        evt.Item.ItemVersion != evt.ItemVersion ||
+                        (evt.EventType == "catalog.item.deleted" &&
+                         evt.Item.IsDeleted != true))
+                    {
+                        throw new InvalidOperationException(
+                            "Outbox event and item snapshot do not match");
+                    }
+
 
                     // STEP 1: MONGODB PROJECTION
                     if (message.ProjectedAtUtc == null)
@@ -148,27 +168,50 @@ namespace Catalog.Workers
             }
         }
 
+
         private async Task ProjectToMongoAsync(
-            ItemAddedEvent evt,
+            CatalogItemEvent evt,
             CancellationToken ct)
         {
-            // Skip a replay if MongoDB already has
-            // the same or a newer version.
-            var existing = await _items
-                .Find(x => x.Id == evt.ItemId)
-                .FirstOrDefaultAsync(ct);
+            var f = Builders<CatalogItemDocument>.Filter;
 
-            if (existing != null &&
-                (existing.ItemVersion ?? 0) >= evt.ItemVersion)
+            // Replace only if the document is older.
+            var filter = f.And(
+                f.Eq(x => x.Id, evt.ItemId),
+                f.Or(
+                    f.Eq(x => x.ItemVersion, (long?)null),
+                    f.Lt(x => x.ItemVersion, evt.ItemVersion)
+                )
+            );
+
+            try
             {
-                return;
+                await _items.ReplaceOneAsync(
+                    filter,
+                    evt.Item,
+                    new ReplaceOptions { IsUpsert = true },
+                    ct);
             }
+            catch (MongoWriteException ex)
+                when (ex.WriteError.Category ==
+                      ServerErrorCategory.DuplicateKey)
+            {
+                // A document with this ID may already
+                // have the same or a newer version.
+                var existing = await _items
+                    .Find(x => x.Id == evt.ItemId)
+                    .FirstOrDefaultAsync(ct);
 
-            await _items.ReplaceOneAsync(
-                x => x.Id == evt.ItemId,
-                evt.Item,
-                new ReplaceOptions { IsUpsert = true },
-                ct);
+                if (existing is not null &&
+                    existing.ItemVersion.GetValueOrDefault()
+                        >= evt.ItemVersion)
+                {
+                    return;
+                }
+
+                throw;
+            }
         }
+
     }
 }

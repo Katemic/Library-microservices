@@ -350,6 +350,9 @@ const validation = {
             // Tombstone / soft deletion
             IsDeleted: {
                 bsonType: "bool"
+            },
+            DeletedAtUtc: {
+                bsonType: ["date", "null"]
             }
 
         }

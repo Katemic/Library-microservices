@@ -36,5 +36,6 @@ public class CatalogItemDocument
     // Optional for compatibility with your V1 seed documents
     public long? ItemVersion { get; set; }
     public bool? IsDeleted { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
 }
 
