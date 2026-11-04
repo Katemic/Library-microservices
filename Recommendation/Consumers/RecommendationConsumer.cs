@@ -60,6 +60,21 @@
                 arguments: null,
                 cancellationToken: stoppingToken);
 
+            var exchange = _config["RabbitMQ:Exchange"]!;
+
+            await channel.ExchangeDeclareAsync(
+                exchange: exchange,
+                type: ExchangeType.Topic,
+                durable: true,
+                autoDelete: false,
+                cancellationToken: stoppingToken);
+
+            await channel.QueueBindAsync(
+                queue: queue,
+                exchange: exchange,
+                routingKey: "#",
+                cancellationToken: stoppingToken);
+
             await channel.BasicQosAsync(
                 prefetchSize: 0,
                 prefetchCount: 1,
@@ -130,27 +145,23 @@
             {
                 case "user.created":
                     await _repository.CreateUserAsync(
-                        Deserialize<UserCreatedEvent>(json),
-                        cancellationToken);
+                        Deserialize<UserCreatedEvent>(json));
                     break;
 
                 case "item.added":
                 case "item.updated":
                     await _repository.UpsertItemAsync(
-                        Deserialize<ItemEvent>(json),
-                        cancellationToken);
+                        Deserialize<ItemEvent>(json));
                     break;
 
                 case "item.deleted":
                     await _repository.DeleteItemAsync(
-                        Deserialize<ItemDeletedEvent>(json),
-                        cancellationToken);
+                        Deserialize<ItemDeletedEvent>(json));
                     break;
 
                 case "loan.created":
                     await _repository.CreateLoanAsync(
-                        Deserialize<LoanCreatedEvent>(json),
-                        cancellationToken);
+                        Deserialize<LoanCreatedEvent>(json));
                     break;
 
                 default:

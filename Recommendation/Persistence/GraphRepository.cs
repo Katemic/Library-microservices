@@ -1,4 +1,5 @@
-﻿using Neo4j.Driver;
+﻿
+using Neo4j.Driver;
 using Recommendation.Contracts;
 
 namespace Recommendation.Persistence
@@ -12,16 +13,16 @@ namespace Recommendation.Persistence
             _driver = driver;
         }
 
-        public async Task CreateUserAsync(
-            UserCreatedEvent message,
-            CancellationToken cancellationToken = default)
+        public async Task CreateUserAsync(UserCreatedEvent message)
         {
             await using var session = _driver.AsyncSession();
 
             await session.ExecuteWriteAsync(async tx =>
             {
                 await tx.RunAsync(
-                    """MERGE (u:User {id: $id})""",
+                    """
+                    MERGE (u:Loaner {id: $id})
+                    """,
                     new
                     {
                         id = message.Id,
@@ -31,9 +32,7 @@ namespace Recommendation.Persistence
             });
         }
 
-        public async Task CreateLoanAsync(
-            LoanCreatedEvent message,
-            CancellationToken cancellationToken = default)
+        public async Task CreateLoanAsync(LoanCreatedEvent message)
         {
             await using var session = _driver.AsyncSession();
 
@@ -41,11 +40,10 @@ namespace Recommendation.Persistence
             {
                 await tx.RunAsync(
                     """
-                MERGE (u:User {id: $userId})
-                MERGE (i:Item {id: $itemId})
-                MERGE (u)-[r:LOANED_ITEM
-                    {loanId: $loanId}]->(i)
-                """,
+                    MATCH (i:item {id: $itemId})
+                    MERGE (u:Loaner {id: $userId})
+                    MERGE (u)-[r:LOANED_ITEM {loanId: $loanId}]->(i)
+                    """,
                     new
                     {
                         userId = message.LoanerId,
@@ -57,9 +55,8 @@ namespace Recommendation.Persistence
             });
         }
 
-        public async Task DeleteItemAsync(
-            ItemDeletedEvent message,
-            CancellationToken cancellationToken = default)
+        // Soft delete: preserve the item and its relationships.
+        public async Task DeleteItemAsync(ItemDeletedEvent message)
         {
             await using var session = _driver.AsyncSession();
 
@@ -67,18 +64,16 @@ namespace Recommendation.Persistence
             {
                 await tx.RunAsync(
                     """
-                MATCH (i:Item {id: $id})
-                DETACH DELETE i
-                """,
+                    MATCH (i:item {id: $id})
+                    SET i.is_deleted = true
+                    """,
                     new { id = message.Id });
 
                 return true;
             });
         }
 
-        public async Task UpsertItemAsync(
-            ItemEvent message,
-            CancellationToken cancellationToken = default)
+        public async Task UpsertItemAsync(ItemEvent message)
         {
             await using var session = _driver.AsyncSession();
 
@@ -87,44 +82,61 @@ namespace Recommendation.Persistence
                 // 1. Create or update the item.
                 await tx.RunAsync(
                     """
-            MERGE (i:Item {id: $id})
-            SET i.name = $name,
-                i.release_year = $releaseYear,
-                i.description = $description,
-                i.review_summary = $reviewSummary,
-                i.media_type = $mediaType
-            """,
+                    MERGE (i:item {id: $id})
+                    SET i.name = $name,
+                        i.media_type = $mediaType,
+                        i.release_year = $releaseYear,
+                        i.description = $description,
+                        i.is_deleted = $isDeleted
+                    """,
                     new
                     {
                         id = message.Id,
                         name = message.Name,
+                        mediaType = message.MediaType,
                         releaseYear = message.ReleaseYear,
                         description = message.Description,
-                        reviewSummary = message.ReviewSummary,
-                        mediaType = message.MediaType
+                        isDeleted = message.IsDeleted
                     });
 
-                // 2. Update the language and its relationship.
+                // 2. Language.
                 await tx.RunAsync(
                     """
-            MATCH (i:Item {id: $itemId})
-            MERGE (l:Language {name: $languageName})
-            MERGE (i)-[:HAS_LANGUAGE]->(l)
-            """,
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[old:HAS_LANGUAGE]->()
+                    DELETE old
+                    """,
+                    new { itemId = message.Id });
+
+                await tx.RunAsync(
+                    """
+                    MATCH (i:item {id: $itemId})
+                    MERGE (l:language {language: $languageName})
+                    MERGE (i)-[:HAS_LANGUAGE]->(l)
+                    """,
                     new
                     {
                         itemId = message.Id,
                         languageName = message.Language.Name
                     });
 
-                // 3. Update the publisher and its relationship.
+                // 3. Publisher.
                 await tx.RunAsync(
                     """
-            MATCH (i:Item {id: $itemId})
-            MERGE (p:Publisher {id: $publisherId})
-            SET p.name = $publisherName
-            MERGE (i)-[:PUBLISHED_BY]->(p)
-            """,
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[old:PUBLISHED_BY]->()
+                    DELETE old
+                    """,
+                    new { itemId = message.Id });
+
+                await tx.RunAsync(
+                    """
+                    MATCH (i:item {id: $itemId})
+                    MERGE (p:publisher {id: $publisherId})
+                    SET p.name = $publisherName
+                    MERGE (i)-[:PUBLISHED_BY]->(p)
+                    MERGE (i)-[:PUBLISHED_BY]->(p)
+                    """,
                     new
                     {
                         itemId = message.Id,
@@ -132,24 +144,26 @@ namespace Recommendation.Persistence
                         publisherName = message.Publisher.Name
                     });
 
-                // 4. Synchronize creators.
+                // 4. Creators.
                 await tx.RunAsync(
                     """
-            MATCH (i:Item {id: $itemId})
-            OPTIONAL MATCH (i)-[r:CREATED_BY]->()
-            DELETE r
-            """,
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[r:CREATED_BY]->()
+                    DELETE r
+                    """,
                     new { itemId = message.Id });
 
                 await tx.RunAsync(
                     """
-            UNWIND $creators AS creator
-            MATCH (i:Item {id: $itemId})
-            MERGE (c:Creator {id: creator.id})
-            SET c.first_name = creator.firstName,
-                c.last_name = creator.lastName
-            MERGE (i)-[:CREATED_BY]->(c)
-            """,
+                    UNWIND $creators AS creator
+                    MATCH (i:item {id: $itemId})
+                    MERGE (c:creator {id: creator.id})
+                    SET c.first_name = creator.firstName,
+                        c.last_name = creator.lastName,
+                        c.birthday = creator.birthday,
+                        c.description = creator.description
+                    MERGE (i)-[:CREATED_BY]->(c)
+                    """,
                     new
                     {
                         itemId = message.Id,
@@ -157,26 +171,28 @@ namespace Recommendation.Persistence
                         {
                             id = c.Id,
                             firstName = c.FirstName,
-                            lastName = c.LastName
+                            lastName = c.LastName,
+                            birthday = c.Birthday,
+                            description = c.Description
                         }).ToList()
                     });
 
-                // 5. Synchronize genres.
+                // 5. Genres.
                 await tx.RunAsync(
                     """
-            MATCH (i:Item {id: $itemId})
-            OPTIONAL MATCH (i)-[r:GENRE_IS]->()
-            DELETE r
-            """,
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[r:GENRE_IS]->()
+                    DELETE r
+                    """,
                     new { itemId = message.Id });
 
                 await tx.RunAsync(
                     """
-            UNWIND $genres AS genre
-            MATCH (i:Item {id: $itemId})
-            MERGE (g:Genre {name: genre.name})
-            MERGE (i)-[:GENRE_IS]->(g)
-            """,
+                    UNWIND $genres AS genre
+                    MATCH (i:item {id: $itemId})
+                    MERGE (g:genre {name: genre.name})
+                    MERGE (i)-[:GENRE_IS]->(g)
+                    """,
                     new
                     {
                         itemId = message.Id,
@@ -186,23 +202,22 @@ namespace Recommendation.Persistence
                         }).ToList()
                     });
 
-                // 6. Synchronize tags.
+                // 6. Tags.
                 await tx.RunAsync(
                     """
-            MATCH (i:Item {id: $itemId})
-            OPTIONAL MATCH (i)-[r:TAGGED_AS]->()
-            DELETE r
-            """,
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[r:TAGGED_AS]->()
+                    DELETE r
+                    """,
                     new { itemId = message.Id });
 
                 await tx.RunAsync(
                     """
-            UNWIND $tags AS tag
-            MATCH (i:Item {id: $itemId})
-            MERGE (t:Tag {name: tag.name})
-            SET t.name = tag.name
-            MERGE (i)-[:TAGGED_AS]->(t)
-            """,
+                    UNWIND $tags AS tag
+                    MATCH (i:item {id: $itemId})
+                    MERGE (t:tag {tag: tag.name})
+                    MERGE (i)-[:TAGGED_AS]->(t)
+                    """,
                     new
                     {
                         itemId = message.Id,
@@ -212,9 +227,56 @@ namespace Recommendation.Persistence
                         }).ToList()
                     });
 
-                return true;
+                // 7. Book and boardgame details.
+                // Remove previous detail relationships first.
+                await tx.RunAsync(
+                    """
+                    MATCH (i:item {id: $itemId})
+                    OPTIONAL MATCH (i)-[r:IS_BOOK|IS_BOARDGAME]->()
+                    DELETE r
+                    """,
+                    new { itemId = message.Id });
+
+                if (message.BookDetails != null)
+                {
+                    await tx.RunAsync(
+                        """
+                        MATCH (i:item {id: $itemId})
+                        MERGE (b:book {id: $itemId})
+                        SET b.ISBN = $isbn,
+                            b.no_of_pages = $noOfPages,
+                            b.version = $version
+                        MERGE (i)-[:IS_BOOK]->(b)
+                        """,
+                        new
+                        {
+                            itemId = message.Id,
+                            isbn = message.BookDetails.Isbn,
+                            noOfPages = message.BookDetails.NoOfPages,
+                            version = message.BookDetails.Version
+                        });
+                }
+
+                if (message.BoardgameDetails != null)
+                {
+                    await tx.RunAsync(
+                        """
+                        MATCH (i:item {id: $itemId})
+                        MERGE (b:boardgame {id: $itemId})
+                        SET b.no_of_players = $noOfPlayers,
+                            b.play_time = $playTime,
+                            b.age_group = $ageGroup
+                        MERGE (i)-[:IS_BOARDGAME]->(b)
+                        """,
+                        new
+                        {
+                            itemId = message.Id,
+                            noOfPlayers = message.BoardgameDetails.NoOfPlayers,
+                            playTime = message.BoardgameDetails.PlayTime,
+                            ageGroup = message.BoardgameDetails.AgeGroup
+                        });
+                }
             });
         }
-
     }
 }

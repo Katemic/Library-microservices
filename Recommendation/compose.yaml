@@ -12,7 +12,8 @@
       RabbitMQ__Port: 5672
       RabbitMQ__Username: ${RABBITMQ_USER}
       RabbitMQ__Password: ${RABBITMQ_PASSWORD}
-      RabbitMQ__Queue: recommendations
+      RabbitMQ__Queue: recommendation-queue
+      RabbitMQ__Exchange: recommendation.events
     depends_on:
       - neo4j
       - rabbitmq
