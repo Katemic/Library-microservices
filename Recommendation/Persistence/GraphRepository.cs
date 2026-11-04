@@ -88,6 +88,7 @@ namespace Recommendation.Persistence
                         i.release_year = $releaseYear,
                         i.description = $description,
                         i.is_deleted = $isDeleted
+                        i.version = $version
                     """,
                     new
                     {
@@ -96,7 +97,8 @@ namespace Recommendation.Persistence
                         mediaType = message.MediaType,
                         releaseYear = message.ReleaseYear,
                         description = message.Description,
-                        isDeleted = message.IsDeleted
+                        isDeleted = message.IsDeleted,
+                        version = message.Version
                     });
 
                 // 2. Language.
