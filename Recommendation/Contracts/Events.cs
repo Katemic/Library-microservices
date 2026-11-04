@@ -25,8 +25,9 @@
         List<GenreDto> Genres,
         List<TagDto> Tags,
         List<ReviewDto> Reviews,
-        long ItemVersion,
-        bool IsDeleted);
+        long Version,
+        bool IsDeleted,
+        DateTime? DeletedAtUtc);
 
     // item.deleted
     public sealed record ItemDeletedEvent(int Id);
