@@ -87,7 +87,7 @@ namespace Recommendation.Persistence
                         i.media_type = $mediaType,
                         i.release_year = $releaseYear,
                         i.description = $description,
-                        i.is_deleted = $isDeleted
+                        i.is_deleted = $isDeleted,
                         i.version = $version
                     """,
                     new
@@ -136,7 +136,6 @@ namespace Recommendation.Persistence
                     MATCH (i:item {id: $itemId})
                     MERGE (p:publisher {id: $publisherId})
                     SET p.name = $publisherName
-                    MERGE (i)-[:PUBLISHED_BY]->(p)
                     MERGE (i)-[:PUBLISHED_BY]->(p)
                     """,
                     new
