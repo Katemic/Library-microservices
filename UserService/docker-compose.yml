@@ -8,11 +8,29 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+
+      # Database connection
       ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=userdb;User=userapp;Password=${MYSQL_USER_PASSWORD}"
+
+      # RabbitMQ connection
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Port: 5672
       RabbitMQ__Username: ${RABBITMQ_USER}
       RabbitMQ__Password: ${RABBITMQ_PASSWORD}
+
+      # Keycloak OAuth 2.0 / OpenID Connect configuration
+      # Public issuer URL used for JWT validation
+      Keycloak__Authority: "http://localhost:8081/realms/Library"
+
+      # Expected audience of JWT access tokens
+      Keycloak__Audience: "library-userservice"
+
+      # Internal Docker URL for Keycloak metadata
+      Keycloak__MetadataAddress: "http://library-keycloak:8080/realms/Library/.well-known/openid-configuration"
+
+      # Internal URL used to reach Keycloak from the container
+      Keycloak__InternalBaseUrl: "http://library-keycloak:8080"
+
     depends_on:
       mysql:
         condition: service_healthy

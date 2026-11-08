@@ -9,16 +9,16 @@ namespace UserService.Messaging
     {
         private readonly IConfiguration _configuration;
 
-        // Henter RabbitMQ-indstillingerne fra konfigurationen
+        // Read RabbitMQ settings from the application configuration.
         public RabbitMqPublisher(IConfiguration configuration)
         {
             _configuration = configuration;
         }
 
-        // Sender en event til RabbitMQ
+        // Publish a domain event to RabbitMQ.
         public async Task PublishAsync(string eventType, object data)
         {
-            // Opretter forbindelsesindstillinger til RabbitMQ
+            // Configure the connection to the RabbitMQ server.
             var factory = new ConnectionFactory
             {
                 HostName = _configuration["RabbitMQ:Host"] ?? "localhost",
@@ -29,11 +29,11 @@ namespace UserService.Messaging
                     ?? throw new InvalidOperationException("RabbitMQ password missing")
             };
 
-            // Opretter forbindelse og kanal til RabbitMQ
+            // Open a connection and create a channel.
             await using var connection = await factory.CreateConnectionAsync();
             await using var channel = await connection.CreateChannelAsync();
 
-            // Opretter en queue til bruger-events, hvis den ikke findes
+            // Declare a durable queue for user events.
             await channel.QueueDeclareAsync(
                 queue: "user.events",
                 durable: true,
@@ -41,25 +41,27 @@ namespace UserService.Messaging
                 autoDelete: false
             );
 
-            // Opretter beskeden med eventtype og data
+            // Build a message envelope containing event metadata and payload.
             var message = new
             {
+                EventId = Guid.NewGuid(),
                 EventType = eventType,
+                OccurredAtUtc = DateTime.UtcNow,
                 Data = data
             };
 
-            // Konverterer beskeden til JSON og derefter bytes
+            // Serialize the event to JSON and convert it to UTF-8 bytes.
             var json = JsonSerializer.Serialize(message);
             var body = Encoding.UTF8.GetBytes(json);
 
-            // Angiver beskedens format og gør den persistent
+            // Mark the event as persistent.
             var properties = new BasicProperties
             {
                 ContentType = "application/json",
                 Persistent = true
             };
 
-            // Publicerer beskeden til RabbitMQ
+            // Publish the event to the user.events queue.
             await channel.BasicPublishAsync(
                 exchange: "",
                 routingKey: "user.events",
@@ -70,4 +72,3 @@ namespace UserService.Messaging
         }
     }
 }
-

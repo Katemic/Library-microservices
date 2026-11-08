@@ -1,4 +1,5 @@
 ﻿
+
 using Microsoft.EntityFrameworkCore;
 using UserService.Models;
 
@@ -13,5 +14,23 @@ namespace UserService.Data
         }
 
         public DbSet<User> Users { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // Store the unique Keycloak user ID.
+            // Allow NULL for users created before Keycloak integration.
+            modelBuilder.Entity<User>()
+                .Property(user => user.KeycloakSubject)
+                .HasMaxLength(255)
+                .IsRequired(false);
+
+            // Prevent multiple library profiles from being linked
+            // to the same Keycloak account.
+            modelBuilder.Entity<User>()
+                .HasIndex(user => user.KeycloakSubject)
+                .IsUnique();
+        }
     }
 }
