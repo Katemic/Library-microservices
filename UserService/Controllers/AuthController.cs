@@ -1,7 +1,10 @@
 ﻿
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 using System.Security.Claims;
+using UserService.Services;
 
 namespace UserService.Controllers
 {
@@ -10,11 +13,14 @@ namespace UserService.Controllers
     public class AuthController : ControllerBase
     {
         private readonly UserService.Services.UserService _userService;
+        private readonly KeycloakUserClient _keycloakUserClient;
 
         public AuthController(
-            UserService.Services.UserService userService)
+            UserService.Services.UserService userService,
+            KeycloakUserClient keycloakUserClient)
         {
             _userService = userService;
+            _keycloakUserClient = keycloakUserClient;
         }
 
         // Return the identity from a validated Keycloak JWT.
@@ -59,7 +65,7 @@ namespace UserService.Controllers
                     "The access token does not contain an email claim.");
             }
 
-            // Read optional profile fields from Keycloak.
+            // Read profile information from the validated JWT.
             var firstName =
                 User.FindFirstValue("given_name")
                 ?? string.Empty;
@@ -68,25 +74,48 @@ namespace UserService.Controllers
                 User.FindFirstValue("family_name")
                 ?? string.Empty;
 
-            // Create the profile once, or return the existing one.
-            var result =
-                await _userService.GetOrCreateKeycloakUserAsync(
-                    keycloakSubject,
-                    firstName,
-                    lastName,
-                    email);
+            // Retrieve CPR and phone number separately from Keycloak.
+            // Sensitive attributes are not included in the JWT.
+            var attributes =
+                await _keycloakUserClient.GetUserAttributesAsync(
+                    keycloakSubject);
 
-            // Return safe profile information only.
-            return Ok(new
+            try
             {
-                result.User.Id,
-                result.User.KeycloakSubject,
-                result.User.FirstName,
-                result.User.LastName,
-                result.User.Email,
-                result.User.IsActive,
-                Created = result.Created
-            });
+                // Create or retrieve the library profile in MySQL.
+                var result =
+                    await _userService.GetOrCreateKeycloakUserAsync(
+                        keycloakSubject,
+                        firstName,
+                        lastName,
+                        email,
+                        attributes.CPR,
+                        attributes.TLF);
+
+                // Do not expose CPR in the API response.
+                return Ok(new
+                {
+                    result.User.Id,
+                    result.User.KeycloakSubject,
+                    result.User.FirstName,
+                    result.User.LastName,
+                    result.User.Email,
+                    result.User.TLF,
+                    result.User.IsActive,
+                    Created = result.Created
+                });
+            }
+            catch (DbUpdateException ex)
+                when (ex.InnerException is MySqlException mysqlEx
+                    && mysqlEx.Number == 1062
+                    && mysqlEx.Message.Contains("IX_Users_CPR"))
+            {
+                // MySQL rejected a duplicate CPR value.
+                return Conflict(new
+                {
+                    Message = "CPR number is already registered."
+                });
+            }
         }
     }
 }

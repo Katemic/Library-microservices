@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using UserService.Data;
 using UserService.Models;
 using UserService.Messaging;
+using System.Text.RegularExpressions;
 
 namespace UserService.Services
 {
@@ -17,6 +18,21 @@ namespace UserService.Services
         {
             _context = context;
             _publisher = publisher;
+        }
+
+        // Normalize CPR to exactly 10 digits without a hyphen.
+        private static string? NormalizeCpr(string? cpr)
+        {
+            if (string.IsNullOrWhiteSpace(cpr))
+                return null;
+
+            var normalized = cpr.Trim().Replace("-", "");
+
+            if (!Regex.IsMatch(normalized, @"^[0-9]{10}$"))
+                throw new ArgumentException(
+                    "CPR must contain exactly 10 digits.");
+
+            return normalized;
         }
 
         // Retrieve all library user profiles.
@@ -44,13 +60,15 @@ namespace UserService.Services
         }
 
         // Find or create a library profile for an authenticated
-        // Keycloak user. Never accept the subject from request data.
+        // Keycloak user, including additional profile attributes.
         public async Task<(User User, bool Created)>
             GetOrCreateKeycloakUserAsync(
                 string keycloakSubject,
                 string firstName,
                 string lastName,
-                string email)
+                string email,
+                string? cpr,
+                string? tlf)
         {
             if (string.IsNullOrWhiteSpace(keycloakSubject))
                 throw new ArgumentException(
@@ -60,22 +78,46 @@ namespace UserService.Services
                 throw new ArgumentException(
                     "Email claim is required.");
 
-            // Return the existing profile when the user logs in again.
+            // Normalize CPR before storing it in MySQL.
+            var normalizedCpr = NormalizeCpr(cpr);
+
+            // Return the existing profile and fill missing attributes.
             var existingUser =
                 await GetUserByKeycloakSubjectAsync(keycloakSubject);
 
             if (existingUser != null)
-                return (existingUser, false);
+            {
+                bool changed = false;
 
-            // Create a new library profile without a password or CPR.
+                if (string.IsNullOrWhiteSpace(existingUser.CPR) &&
+                    normalizedCpr != null)
+                {
+                    existingUser.CPR = normalizedCpr;
+                    changed = true;
+                }
+
+                if (string.IsNullOrWhiteSpace(existingUser.TLF) &&
+                    !string.IsNullOrWhiteSpace(tlf))
+                {
+                    existingUser.TLF = tlf;
+                    changed = true;
+                }
+
+                if (changed)
+                    await _context.SaveChangesAsync();
+
+                return (existingUser, false);
+            }
+
+            // Create a new profile with normalized CPR.
             var user = new User
             {
                 KeycloakSubject = keycloakSubject,
                 FirstName = firstName,
                 LastName = lastName,
                 Email = email,
-                TLF = string.Empty,
-                CPR = null,
+                CPR = normalizedCpr,
+                TLF = tlf ?? string.Empty,
                 IsActive = true
             };
 
@@ -87,23 +129,20 @@ namespace UserService.Services
             }
             catch (DbUpdateException)
             {
-                // Another simultaneous request may have created
-                // the same profile. The unique index prevents duplicates.
-                _context.Entry(user).State =
-                    EntityState.Detached;
+                // Another request may have created the same profile.
+                _context.Entry(user).State = EntityState.Detached;
 
                 var concurrentUser =
-                    await GetUserByKeycloakSubjectAsync(
-                        keycloakSubject);
+                    await GetUserByKeycloakSubjectAsync(keycloakSubject);
 
                 if (concurrentUser != null)
                     return (concurrentUser, false);
 
-                // Re-throw unrelated database errors.
                 throw;
             }
 
             // Publish User.created only for a newly saved profile.
+            // Do not include CPR in the event.
             await _publisher.PublishAsync("User.created", new
             {
                 UserId = user.Id,
@@ -120,6 +159,9 @@ namespace UserService.Services
         {
             user.Id = 0;
             user.IsActive = true;
+
+            // Apply the same CPR format to manually created profiles.
+            user.CPR = NormalizeCpr(user.CPR);
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
@@ -147,7 +189,6 @@ namespace UserService.Services
             if (user == null || !user.IsActive)
                 return null;
 
-            // Check whether the user's email has changed.
             bool emailChanged = user.Email != email;
 
             user.FirstName = firstName;
@@ -157,7 +198,7 @@ namespace UserService.Services
 
             await _context.SaveChangesAsync();
 
-            // Publish only when the email address changes.
+            // Publish only when the email changes.
             if (emailChanged)
             {
                 await _publisher.PublishAsync(
@@ -172,7 +213,7 @@ namespace UserService.Services
             return user;
         }
 
-        // Deactivate a user without deleting their profile.
+        // Deactivate a user without deleting the profile.
         public async Task<bool> DeactivateUserAsync(int id)
         {
             var user = await _context.Users.FindAsync(id);

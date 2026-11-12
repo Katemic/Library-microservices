@@ -31,10 +31,16 @@ services:
       # Internal URL used to reach Keycloak from the container
       Keycloak__InternalBaseUrl: "http://library-keycloak:8080"
 
+      # Backend client for reading user attributes from Keycloak
+      Keycloak__BackendClientId: ${KEYCLOAK_BACKEND_CLIENT_ID}
+      Keycloak__BackendClientSecret: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
     depends_on:
       mysql:
         condition: service_healthy
       rabbitmq:
+        condition: service_started
+      library-keycloak:
         condition: service_started
 
   mysql:
@@ -65,6 +71,35 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 
+  library-keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command:
+      - start-dev
+      - --hostname=http://localhost:8081
+      - --import-realm
+    environment:
+      # Keycloak administrator
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      # Backend client secret
+      KEYCLOAK_BACKEND_CLIENT_SECRET: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
+      # Google login secret
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+    ports:
+      - "127.0.0.1:8081:8080"
+
+    volumes:
+      # Keep Keycloak data between restarts
+      - keycloak_data:/opt/keycloak/data
+
+      # Automatically import the Library realm
+      - ./keycloak/library-realm.json:/opt/keycloak/data/import/Library-realm.json:ro
+
 volumes:
   mysql_data:
   rabbitmq_data:
+  keycloak_data:
+

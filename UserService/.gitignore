@@ -1,2 +1,4 @@
 
 userdb-backup*.sql
+
+.env

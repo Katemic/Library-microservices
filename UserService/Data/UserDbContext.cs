@@ -1,5 +1,4 @@
 ﻿
-
 using Microsoft.EntityFrameworkCore;
 using UserService.Models;
 
@@ -31,6 +30,18 @@ namespace UserService.Data
             modelBuilder.Entity<User>()
                 .HasIndex(user => user.KeycloakSubject)
                 .IsUnique();
+
+            // Store CPR as an optional string.
+            modelBuilder.Entity<User>()
+                .Property(user => user.CPR)
+                .HasMaxLength(11)
+                .IsRequired(false);
+
+            // Prevent two library profiles from using the same CPR.
+            modelBuilder.Entity<User>()
+                .HasIndex(user => user.CPR)
+                .IsUnique();
         }
     }
 }
+

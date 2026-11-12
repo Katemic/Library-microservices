@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddScoped<UserService.Services.UserService>();
 builder.Services.AddSingleton<RabbitMqPublisher>();
+builder.Services.AddHttpClient<UserService.Services.KeycloakUserClient>();
 
 // Database connection
 var connectionString = builder.Configuration
