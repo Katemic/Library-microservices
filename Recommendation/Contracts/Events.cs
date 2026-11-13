@@ -25,7 +25,7 @@
         List<GenreDto> Genres,
         List<TagDto> Tags,
         List<ReviewDto> Reviews,
-        long Version,
+        long ItemVersion,
         bool IsDeleted,
         DateTime? DeletedAtUtc);
 

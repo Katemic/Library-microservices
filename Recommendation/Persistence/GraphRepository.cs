@@ -98,7 +98,7 @@ namespace Recommendation.Persistence
                         releaseYear = message.ReleaseYear,
                         description = message.Description,
                         isDeleted = message.IsDeleted,
-                        version = message.Version
+                        version = message.ItemVersion
                     });
 
                 // 2. Language.
