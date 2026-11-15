@@ -39,35 +39,31 @@ namespace Notification.Services
             switch (routingKey)
             {
                 // USER EVENTS
-
                 case "User.Created":
                     {
                         var e = Deserialize<UserCreated>(message);
 
-                        var user = await _db.Users
-                            .FirstOrDefaultAsync(
+                        var userExists = await _db.Users
+                            .AnyAsync(
                                 u => u.Id == e.Id,
                                 cancellationToken);
 
-                        if (user == null)
+                        if (userExists)
                         {
-                            user = new User
-                            {
-                                Id = e.Id,
-                                Email = e.Email
-                            };
+                            break;
+                        }
 
-                            _db.Users.Add(user);
-                        }
-                        else
+                        var user = new User
                         {
-                            user.Email = e.Email;
-                        }
+                            Id = e.Id,
+                            Email = e.Email
+                        };
+
+                        _db.Users.Add(user);
 
                         await _db.SaveChangesAsync(cancellationToken);
                         break;
                     }
-
                 case "User.UpdateEmail":
                     {
                         var e = Deserialize<UserUpdateEmail>(message);
@@ -79,25 +75,16 @@ namespace Notification.Services
 
                         if (user == null)
                         {
-                            user = new User
-                            {
-                                Id = e.Id,
-                                Email = e.Email
-                            };
+                            // User does not exist. Do not create one.
+                            break;
+                        }
 
-                            _db.Users.Add(user);
-                        }
-                        else
-                        {
-                            user.Email = e.Email;
-                        }
+                        user.Email = e.Email;
 
                         await _db.SaveChangesAsync(cancellationToken);
                         break;
                     }
-
                 // FINE EVENTS
-
                 case "Fine.Created":
                     {
                         var e = Deserialize<FineCreated>(message);
