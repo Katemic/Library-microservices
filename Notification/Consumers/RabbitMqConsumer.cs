@@ -21,15 +21,20 @@ namespace Notification.Consumers
 
         private readonly string[] _routingKeys =
         {
-        "Fine.Created",
-        "Fine.Paid",
-        "Fine.Overdue",
-        "Loan.Returned",
-        "Loan.Overdue",
-        "Reservation.Ready",
-        "Reservation.Created",
-        "Reservation.Cancelled"
-    };
+            "User.Created",
+            "User.UpdateEmail",
+
+            "Fine.Created",
+            "Fine.Paid",
+            "Fine.Overdue",
+
+            "Loan.Returned",
+            "Loan.Overdue",
+
+            "Reservation.Ready",
+            "Reservation.Created",
+            "Reservation.Cancelled"
+        };
 
         public RabbitMqConsumer(
             IConfiguration configuration,

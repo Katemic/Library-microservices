@@ -1,12 +1,29 @@
+
 using Notification;
 using Notification.Consumers;
+using Notification.Data;
 using Notification.Services;
+using Microsoft.EntityFrameworkCore;
 
 internal class Program
 {
     private static void Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+
+        // MySQL database
+        var connectionString =
+            builder.Configuration.GetConnectionString("MySql")
+            ?? throw new InvalidOperationException(
+                "MySQL connection string is missing.");
+
+        builder.Services.AddDbContext<NotificationDbContext>(
+            options =>
+            {
+                options.UseMySql(
+                    connectionString,
+                    ServerVersion.AutoDetect(connectionString));
+            });
 
         // Brevo
         builder.Services.AddHttpClient<BrevoEmailService>(client =>
@@ -23,14 +40,6 @@ internal class Program
                 "application/json");
         });
 
-        // User service
-        /*builder.Services.AddHttpClient<IUserEmailService, UserEmailService>(
-            client =>
-            {
-                client.BaseAddress = new Uri(
-                    builder.Configuration["UserService:BaseUrl"]!);
-            });*/
-
         // Notification handler
         builder.Services.AddScoped<
             INotificationService,
@@ -40,6 +49,16 @@ internal class Program
         builder.Services.AddHostedService<RabbitMqConsumer>();
 
         var host = builder.Build();
+
+        // Automatically create database tables if they don't exist
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider
+                .GetRequiredService<NotificationDbContext>();
+
+            db.Database.EnsureCreated();
+        }
+
         host.Run();
     }
 }

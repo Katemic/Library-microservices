@@ -1,4 +1,7 @@
-﻿using Notification.Contracts;
+﻿using Microsoft.EntityFrameworkCore;
+using Notification.Contracts;
+using Notification.Data;
+using Notification.Model;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -13,7 +16,7 @@ namespace Notification.Services
     internal class NotificationService : INotificationService
     {
         private readonly BrevoEmailService _brevo;
-        private readonly string _recipientEmail;
+        private readonly NotificationDbContext _db;
 
         private readonly JsonSerializerOptions _jsonOptions = new()
         {
@@ -22,11 +25,10 @@ namespace Notification.Services
 
         public NotificationService(
             BrevoEmailService brevo,
-            IConfiguration configuration)
+            NotificationDbContext db)
         {
             _brevo = brevo;
-            _recipientEmail = configuration["Notifications:RecipientEmail"] 
-                ?? throw new InvalidOperationException("Notification recipient email is not configured.");
+            _db = db;
         }
 
         public async Task HandleAsync(
@@ -36,20 +38,82 @@ namespace Notification.Services
         {
             switch (routingKey)
             {
+                // USER EVENTS
+
+                case "User.Created":
+                    {
+                        var e = Deserialize<UserCreated>(message);
+
+                        var user = await _db.Users
+                            .FirstOrDefaultAsync(
+                                u => u.Id == e.Id,
+                                cancellationToken);
+
+                        if (user == null)
+                        {
+                            user = new User
+                            {
+                                Id = e.Id,
+                                Email = e.Email
+                            };
+
+                            _db.Users.Add(user);
+                        }
+                        else
+                        {
+                            user.Email = e.Email;
+                        }
+
+                        await _db.SaveChangesAsync(cancellationToken);
+                        break;
+                    }
+
+                case "User.UpdateEmail":
+                    {
+                        var e = Deserialize<UserUpdateEmail>(message);
+
+                        var user = await _db.Users
+                            .FirstOrDefaultAsync(
+                                u => u.Id == e.Id,
+                                cancellationToken);
+
+                        if (user == null)
+                        {
+                            user = new User
+                            {
+                                Id = e.Id,
+                                Email = e.Email
+                            };
+
+                            _db.Users.Add(user);
+                        }
+                        else
+                        {
+                            user.Email = e.Email;
+                        }
+
+                        await _db.SaveChangesAsync(cancellationToken);
+                        break;
+                    }
+
+                // FINE EVENTS
+
                 case "Fine.Created":
                     {
                         var e = Deserialize<FineCreated>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.LoanerId, cancellationToken);
 
                         await Send(
-                            _recipientEmail,
+                            email,
                             "New fine registered",
                             $"""
-                    <h2>New fine registered</h2>
-                    <p>A fine has been registered for <b>{Encode(e.ItemName)}</b>.</p>
-                    <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                    <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                    """,
+                        <h2>New fine registered</h2>
+                        <p>A fine has been registered for
+                        <b>{Encode(e.ItemName)}</b>.</p>
+                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
+                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -57,17 +121,18 @@ namespace Notification.Services
                 case "Fine.Paid":
                     {
                         var e = Deserialize<FinePaid>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.LoanerId, cancellationToken);
 
                         await Send(
                             email,
                             "Fine payment confirmed",
                             $"""
-                    <h2>Payment confirmed</h2>
-                    <p>Your fine for <b>{Encode(e.ItemName)}</b> has been paid.</p>
-                    <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                    <p>Payment date: {e.PaidDate:dd-MM-yyyy}</p>
-                    """,
+                        <h2>Payment confirmed</h2>
+                        <p>Your fine for <b>{Encode(e.ItemName)}</b> has been paid.</p>
+                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
+                        <p>Payment date: {e.PaidDate:dd-MM-yyyy}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -75,34 +140,38 @@ namespace Notification.Services
                 case "Fine.Overdue":
                     {
                         var e = Deserialize<FineOverdue>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.LoanerId, cancellationToken);
 
                         await Send(
                             email,
                             "Your fine is overdue",
                             $"""
-                    <h2>Fine overdue</h2>
-                    <p>Your fine for <b>{Encode(e.ItemName)}</b> is overdue.</p>
-                    <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                    <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                    """,
+                        <h2>Fine overdue</h2>
+                        <p>Your fine for <b>{Encode(e.ItemName)}</b> is overdue.</p>
+                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
+                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
 
+                // LOAN EVENTS
+
                 case "Loan.Returned":
                     {
                         var e = Deserialize<LoanReturned>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.LoanerId, cancellationToken);
 
                         await Send(
                             email,
                             "Item successfully returned",
                             $"""
-                    <h2>Return confirmed</h2>
-                    <p>You successfully returned <b>{Encode(e.ItemName)}</b>.</p>
-                    <p>Return date: {e.ReturnDate:dd-MM-yyyy}</p>
-                    """,
+                        <h2>Return confirmed</h2>
+                        <p>You successfully returned <b>{Encode(e.ItemName)}</b>.</p>
+                        <p>Return date: {e.ReturnDate:dd-MM-yyyy}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -110,32 +179,36 @@ namespace Notification.Services
                 case "Loan.Overdue":
                     {
                         var e = Deserialize<LoanOverdue>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.LoanerId, cancellationToken);
 
                         await Send(
                             email,
                             "Your loan is overdue",
                             $"""
-                    <h2>Loan overdue</h2>
-                    <p>Your loan for <b>{Encode(e.ItemName)}</b> is overdue.</p>
-                    <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                    """,
+                        <h2>Loan overdue</h2>
+                        <p>Your loan for <b>{Encode(e.ItemName)}</b> is overdue.</p>
+                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
 
+                // RESERVATION EVENTS
+
                 case "Reservation.Ready":
                     {
                         var e = Deserialize<ReservationReady>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.UserId, cancellationToken);
 
                         await Send(
                             email,
                             "Your reservation is ready",
                             $"""
-                    <h2>Your reservation is ready!</h2>
-                    <p><b>{Encode(e.ItemName)}</b> is now ready for pickup.</p>
-                    """,
+                        <h2>Your reservation is ready!</h2>
+                        <p><b>{Encode(e.ItemName)}</b> is now ready for pickup.</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -143,17 +216,18 @@ namespace Notification.Services
                 case "Reservation.Created":
                     {
                         var e = Deserialize<ReservationCreated>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.UserId, cancellationToken);
 
                         await Send(
                             email,
                             "Reservation created",
                             $"""
-                    <h2>Reservation confirmed</h2>
-                    <p>Your reservation for <b>{Encode(e.ItemName)}</b> was created.</p>
-                    <p>Queue number: {e.QueueNumber}</p>
-                    <p>Reservation time: {e.ReservationTime:dd-MM-yyyy HH:mm}</p>
-                    """,
+                        <h2>Reservation confirmed</h2>
+                        <p>Your reservation for <b>{Encode(e.ItemName)}</b> was created.</p>
+                        <p>Queue number: {e.QueueNumber}</p>
+                        <p>Reservation time: {e.ReservationTime:dd-MM-yyyy HH:mm}</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -161,15 +235,16 @@ namespace Notification.Services
                 case "Reservation.Cancelled":
                     {
                         var e = Deserialize<ReservationCancelled>(message);
-                        var email = _recipientEmail;
+                        var email = await GetUserEmailAsync(
+                            e.UserId, cancellationToken);
 
                         await Send(
                             email,
                             "Reservation cancelled",
                             $"""
-                    <h2>Reservation cancelled</h2>
-                    <p>Your reservation for <b>{Encode(e.ItemName)}</b> has been cancelled.</p>
-                    """,
+                        <h2>Reservation cancelled</h2>
+                        <p>Your reservation for <b>{Encode(e.ItemName)}</b> has been cancelled.</p>
+                        """,
                             cancellationToken);
                         break;
                     }
@@ -178,6 +253,25 @@ namespace Notification.Services
                     throw new NotSupportedException(
                         $"Unknown event type: {routingKey}");
             }
+        }
+
+        private async Task<string> GetUserEmailAsync(
+            int userId,
+            CancellationToken cancellationToken)
+        {
+            var user = await _db.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    u => u.Id == userId,
+                    cancellationToken);
+
+            if (user == null || string.IsNullOrWhiteSpace(user.Email))
+            {
+                throw new InvalidOperationException(
+                    $"No email address found for user ID {userId}.");
+            }
+
+            return user.Email;
         }
 
         private T Deserialize<T>(string message)

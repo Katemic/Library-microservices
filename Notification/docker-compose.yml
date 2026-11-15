@@ -1,4 +1,5 @@
-﻿services:
+﻿
+services:
   rabbitmq:
     image: rabbitmq:4-management
     container_name: rabbitmq
@@ -18,6 +19,27 @@
       timeout: 5s
       retries: 5
 
+
+  mysql:
+    image: mysql:8.4
+    container_name: notification-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MySQL__RootPassword}
+      MYSQL_DATABASE: notificationdb
+      MYSQL_USER: ${MySQL__Username}
+      MYSQL_PASSWORD: ${MySQL__Password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MySQL__RootPassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
   notification:
     build:
       context: .
@@ -29,9 +51,13 @@
     environment:
       RabbitMQ__Host: rabbitmq
       RabbitMQ__Port: 5672
+      ConnectionStrings__MySql: "Server=mysql;Port=3306;Database=notificationdb;User=${MySQL__Username};Password=${MySQL__Password};"
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
 
 volumes:
   rabbitmq_data:
+  mysql_data:
