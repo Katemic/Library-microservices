@@ -417,6 +417,107 @@ services:
         condition: service_started
 
     restart: unless-stopped
+
+    
+  
+  # =====================================
+  # RECOMMENDATION - NEO4J DATABASE
+  # =====================================
+  recommendation-neo4j:
+    image: neo4j:5
+
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD}"
+
+    ports:
+      - "127.0.0.1:17474:7474"
+      - "127.0.0.1:17687:7687"
+
+    volumes:
+      - recommendation_neo4j_data:/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          cypher-shell
+          -a bolt://localhost:7687
+          -u neo4j
+          -p "$${NEO4J_AUTH#*/}"
+          "RETURN 1" > /dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+    restart: unless-stopped
+
+    
+  # =====================================
+  # RECOMMENDATION API
+  # =====================================
+  recommendation-api:
+    build:
+      context: ./Recommendation
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:18085:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      Neo4j__Uri: "bolt://recommendation-neo4j:7687"
+      Neo4j__Username: neo4j
+      Neo4j__Password: ${NEO4J_PASSWORD}
+
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+    
+    depends_on:
+      recommendation-neo4j-schema:
+        condition: service_completed_successfully
+
+      rabbitmq:
+        condition: service_healthy
+
+
+    restart: unless-stopped
+
+    
+  # =====================================
+  # RECOMMENDATION - NEO4J SCHEMA SETUP
+  # =====================================
+  recommendation-neo4j-schema:
+    image: neo4j:5
+
+    entrypoint: ["/bin/sh", "-ec"]
+
+    command:
+      - >
+        exec cypher-shell
+        -a bolt://recommendation-neo4j:7687
+        -u neo4j
+        -p "$$NEO4J_PASSWORD"
+        -f /schema/schema.cypher
+
+    environment:
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+
+    volumes:
+      - ./Recommendation/Database/schema.cypher:/schema/schema.cypher:ro
+
+    depends_on:
+      recommendation-neo4j:
+        condition: service_healthy
+
+    restart: "no"
+
+
     
 
 volumes:
@@ -427,3 +528,4 @@ volumes:
   reservation_mysql_data:
   user_mysql_data:
   keycloak_data:
+  recommendation_neo4j_data:

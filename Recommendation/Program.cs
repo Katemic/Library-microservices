@@ -1,31 +1,73 @@
+
 using Neo4j.Driver;
 using Recommendation.Consumers;
 using Recommendation.Persistence;
 
-internal class Program
+var builder = WebApplication.CreateBuilder(args);
+
+// ========================================
+// NEO4J DATABASE CONNECTION
+// ========================================
+
+builder.Services.AddSingleton<IDriver>(sp =>
 {
-    private static void Main(string[] args)
+    var config = sp.GetRequiredService<IConfiguration>();
+
+    var uri = config["Neo4j:Uri"]
+        ?? throw new InvalidOperationException(
+            "Neo4j URI is missing");
+
+    var username = config["Neo4j:Username"]
+        ?? throw new InvalidOperationException(
+            "Neo4j username is missing");
+
+    var password = config["Neo4j:Password"]
+        ?? throw new InvalidOperationException(
+            "Neo4j password is missing");
+
+    return GraphDatabase.Driver(
+        uri,
+        AuthTokens.Basic(username, password));
+});
+
+// ========================================
+// GRAPH REPOSITORY
+// ========================================
+
+builder.Services.AddSingleton<GraphRepository>();
+
+// ========================================
+// RABBITMQ CONSUMER
+// ========================================
+
+builder.Services.AddHostedService<RecommendationConsumer>();
+
+var app = builder.Build();
+
+// Basic API status endpoint.
+app.MapGet("/", () =>
+    Results.Ok(new
     {
-        var builder = WebApplication.CreateBuilder(args);
+        Service = "Recommendation",
+        Status = "Running"
+    }));
 
-        builder.Services.AddSingleton(_ =>
+// Check actual Neo4j connectivity.
+app.MapGet("/health/neo4j", async (IDriver driver) =>
+{
+    try
+    {
+        await driver.VerifyConnectivityAsync();
+
+        return Results.Ok(new
         {
-            var config = builder.Configuration;
-
-            return GraphDatabase.Driver(
-                config["Neo4j:Uri"]!,
-                AuthTokens.Basic(
-                    config["Neo4j:Username"]!,
-                    config["Neo4j:Password"]!));
+            Status = "Connected to Neo4j"
         });
-
-        builder.Services.AddSingleton<GraphRepository>();
-        builder.Services.AddHostedService<RecommendationConsumer>();
-
-        var app = builder.Build();
-
-        app.MapGet("/", () => "Recommendation service is running");
-
-        app.Run();
     }
-}
+    catch
+    {
+        return Results.StatusCode(503);
+    }
+});
+
+app.Run();
