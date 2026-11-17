@@ -28,5 +28,7 @@ namespace UserService.Models
 
         // Indicates whether the library profile is active.
         public bool IsActive { get; set; } = true;
+
+        public long Version { get; set; } = 1;
     }
 }

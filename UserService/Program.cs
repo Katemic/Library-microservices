@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddScoped<UserService.Services.UserService>();
 builder.Services.AddSingleton<RabbitMqPublisher>();
+builder.Services.AddHostedService<UserOutboxWorker>();
 builder.Services.AddHttpClient<UserService.Services.KeycloakUserClient>();
 
 // Database connection
@@ -222,6 +223,16 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+
+    var db = scope.ServiceProvider
+        .GetRequiredService<UserDbContext>();
+
+    await db.Database.MigrateAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

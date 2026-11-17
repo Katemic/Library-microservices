@@ -14,6 +14,9 @@ namespace UserService.Data
 
         public DbSet<User> Users { get; set; }
 
+        public DbSet<UserOutboxMessage> UserOutboxMessages
+    => Set<UserOutboxMessage>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -41,6 +44,36 @@ namespace UserService.Data
             modelBuilder.Entity<User>()
                 .HasIndex(user => user.CPR)
                 .IsUnique();
+
+            modelBuilder.Entity<User>()
+                .Property(u => u.Version)
+                .HasDefaultValue(1L);
+
+            modelBuilder.Entity<UserOutboxMessage>(entity =>
+            {
+                entity.ToTable("user_outbox_messages");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.EventType)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(x => x.Payload)
+                    .HasColumnType("longtext")
+                    .IsRequired();
+
+                entity.Property(x => x.LastError)
+                    .HasColumnType("text");
+
+                entity.HasIndex(x => new
+                {
+                    x.PublishedAtUtc,
+                    x.OccurredAtUtc
+                });
+            });
+
+
         }
     }
 }
