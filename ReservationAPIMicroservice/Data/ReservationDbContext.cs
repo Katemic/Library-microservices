@@ -79,7 +79,7 @@ public partial class ReservationDbContext : DbContext
             entity.HasIndex(e => e.Item, "item");
 
             entity.Property(e => e.Id)
-                .ValueGeneratedNever()
+                .ValueGeneratedOnAdd()
                 .HasColumnName("id");
             entity.Property(e => e.Item).HasColumnName("item");
             entity.Property(e => e.QueueNumber).HasColumnName("queueNumber");

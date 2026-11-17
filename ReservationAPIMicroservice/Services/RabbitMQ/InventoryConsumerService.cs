@@ -8,7 +8,7 @@ using ReservationAPIMicroservice.Data;
 using ReservationAPIMicroservice.Events;
 using ReservationAPIMicroservice.Models;
 
-namespace ReservationAPIMicroservice.Messaging;
+namespace ReservationAPIMicroservice.Services.RabbitMQ;
 
 public sealed class InventoryConsumerService : BackgroundService
 {

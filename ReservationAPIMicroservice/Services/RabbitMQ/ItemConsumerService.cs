@@ -8,7 +8,7 @@ using ReservationAPIMicroservice.Data;
 using ReservationAPIMicroservice.Events;
 using ReservationAPIMicroservice.Models;
 
-namespace ReservationAPIMicroservice.Services.Consumers;
+namespace ReservationAPIMicroservice.Services.RabbitMQ;
 
 public class ItemConsumerService : BackgroundService
 {

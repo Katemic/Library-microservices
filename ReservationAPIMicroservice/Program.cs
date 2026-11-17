@@ -2,9 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using ReservationAPIMicroservice.Data;
-using ReservationAPIMicroservice.Messaging;
 using ReservationAPIMicroservice.Services;
-using ReservationAPIMicroservice.Services.Consumers;
+using ReservationAPIMicroservice.Services.RabbitMQ;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,8 +39,8 @@ builder.Services.AddSingleton<IConnection>(_ =>
         .GetResult();
 });
 
+builder.Services.AddScoped<IReservationService>();
 builder.Services.AddSingleton<RabbitMqPublisher>();
-
 builder.Services.AddHostedService<InventoryConsumerService>();
 builder.Services.AddHostedService<ItemConsumerService>();
 

@@ -8,14 +8,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Catalog", "Catalog\Catalog.csproj", "{65D93CDD-3842-4034-A72E-C131E53D514F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
-	ProjectSection(SolutionItems) = preProject
-		.env = .env
-		.env.example = .env.example
-		.gitignore = .gitignore
-		compose.integration.yaml = compose.integration.yaml
-	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReservationAPIMicroservice", "ReservationAPIMicroservice\ReservationAPIMicroservice.csproj", "{661D735C-A1D4-4C6B-9783-7197ABBDD8CD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReservationAPIMicroserviceTests", "ReservationAPIMicroserviceTests\ReservationAPIMicroserviceTests.csproj", "{F2AC820C-ACD2-427A-8EB1-2A300240F956}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -35,6 +31,10 @@ Global
 		{661D735C-A1D4-4C6B-9783-7197ABBDD8CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{661D735C-A1D4-4C6B-9783-7197ABBDD8CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{661D735C-A1D4-4C6B-9783-7197ABBDD8CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F2AC820C-ACD2-427A-8EB1-2A300240F956}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F2AC820C-ACD2-427A-8EB1-2A300240F956}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F2AC820C-ACD2-427A-8EB1-2A300240F956}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F2AC820C-ACD2-427A-8EB1-2A300240F956}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
