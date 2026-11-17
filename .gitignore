@@ -371,3 +371,5 @@ bin/
 obj/
 .vs/
 *.csproj.user
+
+/Notification/.env
