@@ -14,9 +14,17 @@
       RabbitMQ__Password: ${RABBITMQ_PASSWORD}
       RabbitMQ__Queue: recommendation-queue
       RabbitMQ__Exchange: recommendation.events
+      # Ollama runs on the host machine, not in compose.
+      Ollama__BaseUrl: http://host.docker.internal:11434
+      Ollama__Model: llama3.2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - neo4j
-      - rabbitmq
+      neo4j:
+        condition: service_started
+      # The consumer does not retry its first connection, so wait for RabbitMQ.
+      rabbitmq:
+        condition: service_healthy
 
   neo4j:
     image: neo4j:5
@@ -34,3 +42,8 @@
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
