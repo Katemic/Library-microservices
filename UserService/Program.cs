@@ -18,7 +18,7 @@ builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddHostedService<UserOutboxWorker>();
 builder.Services.AddHttpClient<UserService.Services.KeycloakUserClient>();
 
-// Database connection
+// Database connection 
 var connectionString = builder.Configuration
     .GetConnectionString("DefaultConnection");
 
