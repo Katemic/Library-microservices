@@ -1,0 +1,105 @@
+﻿
+services:
+  userservice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+      # Database connection
+      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=userdb;User=userapp;Password=${MYSQL_USER_PASSWORD}"
+
+      # RabbitMQ connection
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__Username: ${RABBITMQ_USER}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD}
+
+      # Keycloak OAuth 2.0 / OpenID Connect configuration
+      # Public issuer URL used for JWT validation
+      Keycloak__Authority: "http://localhost:8081/realms/Library"
+
+      # Expected audience of JWT access tokens
+      Keycloak__Audience: "library-userservice"
+
+      # Internal Docker URL for Keycloak metadata
+      Keycloak__MetadataAddress: "http://library-keycloak:8080/realms/Library/.well-known/openid-configuration"
+
+      # Internal URL used to reach Keycloak from the container
+      Keycloak__InternalBaseUrl: "http://library-keycloak:8080"
+
+      # Backend client for reading user attributes from Keycloak
+      Keycloak__BackendClientId: ${KEYCLOAK_BACKEND_CLIENT_ID}
+      Keycloak__BackendClientSecret: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      library-keycloak:
+        condition: service_started
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: userdb
+      MYSQL_USER: userapp
+      MYSQL_PASSWORD: ${MYSQL_USER_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  library-keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command:
+      - start-dev
+      - --hostname=http://localhost:8081
+      - --import-realm
+    environment:
+      # Keycloak administrator
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      # Backend client secret
+      KEYCLOAK_BACKEND_CLIENT_SECRET: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
+      # Google login secret
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+    ports:
+      - "127.0.0.1:8081:8080"
+
+    volumes:
+      # Keep Keycloak data between restarts
+      - keycloak_data:/opt/keycloak/data
+
+      # Automatically import the Library realm
+      - ./keycloak/library-realm.json:/opt/keycloak/data/import/Library-realm.json:ro
+
+volumes:
+  mysql_data:
+  rabbitmq_data:
+  keycloak_data:
+
