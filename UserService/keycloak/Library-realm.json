@@ -867,10 +867,24 @@
       "alwaysDisplayInConsole": false,
       "clientAuthenticatorType": "client-secret",
       "redirectUris": [
-        "http://localhost:18084/swagger/oauth2-redirect.html"
+        "http://localhost:18084/swagger/oauth2-redirect.html",
+        "http://127.0.0.1:18084/swagger/oauth2-redirect.html",
+        "http://localhost:8080/swagger/oauth2-redirect.html",
+        "http://127.0.0.1:8080/swagger/oauth2-redirect.html",
+        "http://localhost:5172/swagger/oauth2-redirect.html",
+        "http://127.0.0.1:5172/swagger/oauth2-redirect.html",
+        "https://localhost:7271/swagger/oauth2-redirect.html",
+        "https://127.0.0.1:7271/swagger/oauth2-redirect.html"
       ],
       "webOrigins": [
-        "http://localhost:18084"
+        "http://localhost:18084",
+        "http://127.0.0.1:18084",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:5172",
+        "http://127.0.0.1:5172",
+        "https://localhost:7271",
+        "https://127.0.0.1:7271"
       ],
       "notBefore": 0,
       "bearerOnly": false,
