@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loan-flyway-sql
+  namespace: library
+data:
+  V1__initial_loan_schema.sql: "CREATE TABLE IF NOT EXISTS `loan` (\n    `id` INT NOT NULL AUTO_INCREMENT,\n   \
+    \ `status` ENUM('Active', 'Returned', 'Overdue') NOT NULL DEFAULT 'Active',\n    `item_id` INT NOT NULL,\n \
+    \   `item_name` VARCHAR(255) NOT NULL,\n    `loaner_id` INT NOT NULL,\n    `loaned_at_utc` DATETIME(6) NOT NULL,\n\
+    \    `due_at_utc` DATETIME(6) NOT NULL,\n    `returned_at_utc` DATETIME(6) NULL,\n    PRIMARY KEY (`id`),\n\
+    \    INDEX `idx_loan_item_id` (`item_id`),\n    INDEX `idx_loan_loaner_id` (`loaner_id`)\n) CHARACTER SET utf8mb4\
+    \ COLLATE utf8mb4_0900_ai_ci;\n\nCREATE TABLE IF NOT EXISTS `item` (\n    `id` INT NOT NULL,\n    `name` VARCHAR(255)\
+    \ NOT NULL,\n    `is_deleted` BOOLEAN NOT NULL DEFAULT FALSE,\n    `deleted_at_utc` DATETIME(6) NULL,\n    PRIMARY\
+    \ KEY (`id`)\n) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;\n\nCREATE TABLE IF NOT EXISTS `inventory`\
+    \ (\n    `id` INT NOT NULL AUTO_INCREMENT,\n    `item_id` INT NOT NULL,\n    `status` ENUM('Available', 'Loaned',\
+    \ 'Unavailable') NOT NULL DEFAULT 'Available',\n    `barcode` VARCHAR(128) NOT NULL,\n    `placement` VARCHAR(128)\
+    \ NOT NULL,\n    PRIMARY KEY (`id`),\n    UNIQUE KEY `uk_inventory_item_id` (`item_id`)\n) CHARACTER SET utf8mb4\
+    \ COLLATE utf8mb4_0900_ai_ci;\n\nCREATE TABLE IF NOT EXISTS `fine` (\n    `id` INT NOT NULL AUTO_INCREMENT,\n\
+    \    `loan_id` INT NOT NULL,\n    `loaner_id` INT NOT NULL,\n    `item_id` INT NOT NULL,\n    `item_name` VARCHAR(255)\
+    \ NOT NULL,\n    `amount` DECIMAL(10,2) NOT NULL,\n    `status` ENUM('Created', 'Overdue', 'Paid') NOT NULL\
+    \ DEFAULT 'Created',\n    `created_at_utc` DATETIME(6) NOT NULL,\n    `paid_at_utc` DATETIME(6) NULL,\n    `due_at_utc`\
+    \ DATETIME(6) NOT NULL,\n    PRIMARY KEY (`id`),\n    UNIQUE KEY `uk_fine_loan_id` (`loan_id`)\n) CHARACTER\
+    \ SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+  V2__add_item_version.sql: '
+
+    -- V2: Track the latest Catalog version received by Loan
+
+
+    ALTER TABLE `item`
+
+    ADD COLUMN `item_version` BIGINT NOT NULL DEFAULT 0;
+
+    '

@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recommendation-neo4j-schema
+  namespace: library
+data:
+  schema.cypher: '
+
+    CREATE CONSTRAINT item_id_unique IF NOT EXISTS
+
+    FOR (i:item)
+
+    REQUIRE i.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT loaner_id_unique IF NOT EXISTS
+
+    FOR (u:Loaner)
+
+    REQUIRE u.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT creator_id_unique IF NOT EXISTS
+
+    FOR (c:creator)
+
+    REQUIRE c.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT genre_id_unique IF NOT EXISTS
+
+    FOR (g:genre)
+
+    REQUIRE g.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT tag_id_unique IF NOT EXISTS
+
+    FOR (t:tag)
+
+    REQUIRE t.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT publisher_id_unique IF NOT EXISTS
+
+    FOR (p:publisher)
+
+    REQUIRE p.id IS UNIQUE;
+
+
+    CREATE CONSTRAINT language_id_unique IF NOT EXISTS
+
+    FOR (l:language)
+
+    REQUIRE l.id IS UNIQUE;
+
+    '

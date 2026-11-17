@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-flyway-sql
+  namespace: library
+data:
+  V1__initial_notification_schema.sql: "\n-- ===========================================\n-- Notification Service\
+    \ - Initial Database\n-- ===========================================\n\nCREATE TABLE `Users` (\n    `Id` INT\
+    \ NOT NULL,\n    `Email` VARCHAR(255) NOT NULL,\n    `UserVersion` BIGINT NOT NULL DEFAULT 0,\n\n    PRIMARY\
+    \ KEY (`Id`)\n)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- ===========================================\n\
+    -- PROCESSED NOTIFICATIONS\n-- ===========================================\n\nCREATE TABLE `ProcessedNotifications`\
+    \ (\n    `EventKey` VARCHAR(160) NOT NULL,\n    `RecipientEmail` VARCHAR(255) NOT NULL,\n    `ProcessedAtUtc`\
+    \ DATETIME(6) NOT NULL,\n\n    PRIMARY KEY (`EventKey`)\n)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n"

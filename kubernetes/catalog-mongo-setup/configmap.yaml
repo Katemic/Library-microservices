@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-mongo-script
+  namespace: library
+data:
+  setup.js: "\n/**\n * Catalog MongoDB - Initial Setup\n *\n * CQRS Read Database\n *\n * MySQL is the source of\
+    \ truth.\n * MongoDB stores denormalized item documents.\n *\n * This script:\n * 1. Creates the items collection\n\
+    \ * 2. Defines document validation\n * 3. Creates indexes\n *\n * It does NOT insert data.\n * Data synchronization\
+    \ will be handled\n * by the future CQRS background worker.\n */\n\nconst catalogDb = db.getSiblingDB(\"catalog_read\"\
+    );\nconst collectionName = \"items\";\n\n\n// --------------------------------------\n// Reusable schema for\
+    \ lookup objects\n// Used by Genres and Tags\n// --------------------------------------\n\nconst lookupSchema\
+    \ = {\n    bsonType: \"object\",\n    required: [\"_id\", \"Name\"],\n    properties: {\n        _id: {\n  \
+    \          bsonType: \"int\"\n        },\n        Name: {\n            bsonType: [\"string\", \"null\"]\n  \
+    \      }\n    }\n};\n\n\n// --------------------------------------\n// ITEMS COLLECTION VALIDATION\n// --------------------------------------\n\
+    \nconst validation = {\n    $jsonSchema: {\n        bsonType: \"object\",\n\n        title: \"Catalog item read\
+    \ projection\",\n\n        description:\n            \"Denormalized representation of a Catalog item\",\n\n\
+    \        required: [\n            \"_id\",\n            \"Name\",\n            \"MediaType\",\n            \"\
+    BookDetails\",\n            \"BoardgameDetails\",\n            \"Language\",\n            \"Publisher\",\n \
+    \           \"Creators\",\n            \"Genres\",\n            \"Tags\",\n            \"Reviews\"\n       \
+    \ ],\n\n        properties: {\n\n            // ----------------------------------\n            // ITEM - MYSQL:\
+    \ item\n            // ----------------------------------\n\n            // Same ID as MySQL item.id\n     \
+    \       _id: {\n                bsonType: \"int\"\n            },\n\n            Name: {\n                bsonType:\
+    \ \"string\"\n            },\n\n            MediaType: {\n                enum: [\"book\", \"boardgame\"]\n\
+    \            },\n\n            ReleaseYear: {\n                bsonType: [\"int\", \"null\"],\n            \
+    \    minimum: 1000,\n                maximum: 2100\n            },\n\n            Description: {\n         \
+    \       bsonType: [\"string\", \"null\"]\n            },\n\n            ReviewSummary: {\n                bsonType:\
+    \ [\"string\", \"null\"]\n            },\n\n            Image: {\n                bsonType: [\"string\", \"\
+    null\"]\n            },\n\n            AverageStars: {\n                bsonType: [\n                    \"\
+    double\",\n                    \"decimal\",\n                    \"int\",\n                    \"null\"\n  \
+    \              ],\n                minimum: 0,\n                maximum: 5\n            },\n\n\n           \
+    \ // ----------------------------------\n            // BOOK DETAILS - MYSQL: book\n            // ----------------------------------\n\
+    \n            BookDetails: {\n                bsonType: [\"object\", \"null\"],\n\n                properties:\
+    \ {\n\n                    ISBN: {\n                        bsonType: [\"string\", \"null\"]\n             \
+    \       },\n\n                    No_Of_Pages: {\n                        bsonType: [\"int\", \"null\"],\n \
+    \                       minimum: 0\n                    },\n\n                    Version: {\n             \
+    \           bsonType: [\"string\", \"null\"]\n                    }\n                }\n            },\n\n\n\
+    \            // ----------------------------------\n            // BOARDGAME DETAILS\n            // MYSQL:\
+    \ boardgame\n            // ----------------------------------\n\n            BoardgameDetails: {\n        \
+    \        bsonType: [\"object\", \"null\"],\n\n                required: [\"item_id\"],\n\n                properties:\
+    \ {\n\n                    item_id: {\n                        bsonType: \"int\"\n                    },\n\n\
+    \                    No_Of_Players: {\n                        bsonType: [\"string\", \"null\"]\n          \
+    \          },\n\n                    Play_Time: {\n                        bsonType: [\"string\", \"null\"]\n\
+    \                    },\n\n                    Age_Group: {\n                        bsonType: [\"string\",\
+    \ \"null\"]\n                    }\n                }\n            },\n\n\n            // ----------------------------------\n\
+    \            // LANGUAGE - MYSQL: language\n            // ----------------------------------\n\n          \
+    \  Language: {\n                bsonType: \"object\",\n\n                required: [\"_id\", \"Name\"],\n\n\
+    \                properties: {\n\n                    _id: {\n                        bsonType: \"int\"\n  \
+    \                  },\n\n                    Name: {\n                        bsonType: \"string\"\n       \
+    \             }\n                }\n            },\n\n\n            // ----------------------------------\n\
+    \            // PUBLISHER - MYSQL: publisher\n            // ----------------------------------\n\n        \
+    \    Publisher: {\n                bsonType: \"object\",\n\n                required: [\"_id\", \"Name\"],\n\
+    \n                properties: {\n\n                    _id: {\n                        bsonType: \"int\"\n \
+    \                   },\n\n                    Name: {\n                        bsonType: \"string\"\n      \
+    \              }\n                }\n            },\n\n\n            // ----------------------------------\n\
+    \            // CREATORS\n            // MYSQL: creator + item_creator\n            // ----------------------------------\n\
+    \n            Creators: {\n                bsonType: \"array\",\n\n                items: {\n              \
+    \      bsonType: \"object\",\n\n                    required: [\"_id\"],\n\n                    properties:\
+    \ {\n\n                        _id: {\n                            bsonType: \"int\"\n                     \
+    \   },\n\n                        FirstName: {\n                            bsonType: [\"string\", \"null\"\
+    ]\n                        },\n\n                        LastName: {\n                            bsonType:\
+    \ [\"string\", \"null\"]\n                        },\n\n                        Birthday: {\n              \
+    \              bsonType: [\"date\", \"null\"]\n                        },\n\n                        Description:\
+    \ {\n                            bsonType: [\"string\", \"null\"]\n                        }\n             \
+    \       }\n                }\n            },\n\n\n            // ----------------------------------\n      \
+    \      // GENRES\n            // MYSQL: genre + item_genre\n            // ----------------------------------\n\
+    \n            Genres: {\n                bsonType: \"array\",\n                items: lookupSchema\n       \
+    \     },\n\n\n            // ----------------------------------\n            // TAGS\n            // MYSQL:\
+    \ tag + item_tag\n            // ----------------------------------\n\n            Tags: {\n               \
+    \ bsonType: \"array\",\n                items: lookupSchema\n            },\n\n\n            // ----------------------------------\n\
+    \            // REVIEWS - MYSQL: review\n            // ----------------------------------\n\n            Reviews:\
+    \ {\n                bsonType: \"array\",\n\n                items: {\n                    bsonType: \"object\"\
+    ,\n\n                    required: [\n                        \"_id\",\n                        \"Loaner_Id\"\
+    ,\n                        \"object_id\",\n                        \"No_Of_Stars\"\n                    ],\n\
+    \n                    properties: {\n\n                        // Composite MySQL key:\n                   \
+    \     // item_id + loaner_id\n                        // Example: \"42:7\"\n                        _id: {\n\
+    \                            bsonType: \"string\"\n                        },\n\n                        //\
+    \ External User microservice ID\n                        // No foreign key required\n                      \
+    \  Loaner_Id: {\n                            bsonType: \"int\"\n                        },\n\n             \
+    \           // Optional - not available\n                        // in Catalog MySQL schema\n              \
+    \          Loaner_Name: {\n                            bsonType: [\"string\", \"null\"]\n                  \
+    \      },\n\n                        // Corresponds to review.item_id\n                        object_id: {\n\
+    \                            bsonType: \"int\"\n                        },\n\n                        No_Of_Stars:\
+    \ {\n                            bsonType: [\n                                \"double\",\n                \
+    \                \"decimal\",\n                                \"int\"\n                            ],\n   \
+    \                         minimum: 1,\n                            maximum: 5\n                        },\n\n\
+    \                        Text: {\n                            bsonType: [\"string\", \"null\"]\n           \
+    \             }\n                    }\n                }\n            },\n\n\n            // ----------------------------------\n\
+    \            // FUTURE CQRS SYNCHRONIZATION\n            // ----------------------------------\n\n         \
+    \   // Will be added to MySQL in V2\n            ItemVersion: {\n                bsonType: [\"int\", \"long\"\
+    ]\n            },\n\n            // Tombstone / soft deletion\n            IsDeleted: {\n                bsonType:\
+    \ \"bool\"\n            },\n            DeletedAtUtc: {\n                bsonType: [\"date\", \"null\"]\n  \
+    \          }\n\n        }\n    }\n};\n\n\n// --------------------------------------\n// VALIDATION OPTIONS\n\
+    // --------------------------------------\n\nconst options = {\n\n    validator: validation,\n\n    validationLevel:\
+    \ \"strict\",\n\n    validationAction: \"error\"\n};\n\n\n// --------------------------------------\n// CREATE\
+    \ OR UPDATE COLLECTION\n// --------------------------------------\n\nif (!catalogDb.getCollectionNames()\n \
+    \   .includes(collectionName)) {\n\n    catalogDb.createCollection(\n        collectionName,\n        options\n\
+    \    );\n\n    print(\n        \"Created catalog_read.items with validation\"\n    );\n\n} else {\n\n    const\
+    \ result = catalogDb.runCommand({\n        collMod: collectionName,\n        ...options\n    });\n\n    if (result.ok\
+    \ !== 1) {\n        throw new Error(\n            \"Unable to update items validation: \" +\n            tojson(result)\n\
+    \        );\n    }\n\n    print(\n        \"Updated catalog_read.items validation\"\n    );\n}\n\n\n// --------------------------------------\n\
+    // CREATE INDEXES\n// --------------------------------------\n\nconst items = catalogDb.getCollection(\n   \
+    \ collectionName\n);\n\n\n// Search by item name\nitems.createIndex(\n    { Name: 1 },\n    { name: \"idx_name\"\
+    \ }\n);\n\n\n// Filter by media type and name\nitems.createIndex(\n    {\n        MediaType: 1,\n        Name:\
+    \ 1\n    },\n    { name: \"idx_media_type_name\" }\n);\n\n\n// Filter by genre\nitems.createIndex(\n    { \"\
+    Genres._id\": 1 },\n    { name: \"idx_genre_id\" }\n);\n\n\n// Filter by tag\nitems.createIndex(\n    { \"Tags._id\"\
+    : 1 },\n    { name: \"idx_tag_id\" }\n);\n\n\n// Filter by creator\nitems.createIndex(\n    { \"Creators._id\"\
+    : 1 },\n    { name: \"idx_creator_id\" }\n);\n\n\n// Find reviews by loaner/user\nitems.createIndex(\n    {\
+    \ \"Reviews.Loaner_Id\": 1 },\n    { name: \"idx_review_loaner\" }\n);\n\n\n// --------------------------------------\n\
+    // SETUP COMPLETE\n// --------------------------------------\n\nprint(\n    \"Catalog read model initialized:\
+    \ \" +\n    catalogDb.getName() +\n    \".\" +\n    collectionName\n);\n\nprint(\n    \"Indexes: \" +\n    items.getIndexes()\n\
+    \        .map(i => i.name)\n        .join(\", \")\n);\n\nprint(\n    \"No Catalog data was seeded.\"\n);\n\n\
+    print(\n    \"Items will be populated by the CQRS projector.\"\n);\n"

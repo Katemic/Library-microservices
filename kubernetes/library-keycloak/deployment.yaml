@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: library-keycloak
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: library-keycloak
+  template:
+    metadata:
+      labels:
+        app: library-keycloak
+    spec:
+      containers:
+      - name: library-keycloak
+        image: quay.io/keycloak/keycloak:26.8.1
+        imagePullPolicy: Always
+        env:
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: KEYCLOAK_ADMIN_USERNAME
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: KEYCLOAK_BACKEND_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: KEYCLOAK_BACKEND_CLIENT_SECRET
+        - name: KC_HOSTNAME
+          value: http://localhost:30086
+        ports:
+        - name: http
+          containerPort: 8080
+        volumeMounts:
+        - name: data
+          mountPath: /opt/keycloak/data
+        - name: realm
+          mountPath: /opt/keycloak/data/import
+          readOnly: true
+        args:
+        - start-dev
+        - --import-realm
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            memory: 2Gi
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 35
+          periodSeconds: 10
+          failureThreshold: 24
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: library-keycloak-data
+      - name: realm
+        configMap:
+          name: library-keycloak-realm

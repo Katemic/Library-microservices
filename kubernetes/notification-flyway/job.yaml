@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: notification-flyway
+  namespace: library
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: notification-flyway
+        image: flyway/flyway:13.7.0
+        env:
+        - name: FLYWAY_URL
+          value: jdbc:mysql://notification-mysql:3306/notificationdb?allowPublicKeyRetrieval=true&useSSL=false
+        - name: FLYWAY_USER
+          value: notification_user
+        - name: FLYWAY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NOTIFICATION_DB_PASSWORD
+        - name: FLYWAY_LOCATIONS
+          value: filesystem:/flyway/sql
+        - name: FLYWAY_CONNECT_RETRIES
+          value: '60'
+        command:
+        - flyway
+        - migrate
+        volumeMounts:
+        - name: config
+          mountPath: /flyway/sql
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: notification-flyway-sql

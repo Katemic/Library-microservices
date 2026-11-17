@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: recommendation-neo4j-schema
+  namespace: library
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: recommendation-neo4j-schema
+        image: neo4j:5
+        env:
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NEO4J_PASSWORD
+        command:
+        - /bin/sh
+        - -ec
+        - for i in $(seq 1 90); do cypher-shell -a bolt://recommendation-neo4j:7687 -u neo4j -p "$NEO4J_PASSWORD"
+          "RETURN 1" >/dev/null 2>&1 && break; sleep 3; done; exec cypher-shell -a bolt://recommendation-neo4j:7687
+          -u neo4j -p "$NEO4J_PASSWORD" -f /schema/schema.cypher
+        volumeMounts:
+        - name: config
+          mountPath: /schema
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: recommendation-neo4j-schema

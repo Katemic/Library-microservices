@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-flyway
+  namespace: library
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: catalog-flyway
+        image: flyway/flyway:13.7.0
+        env:
+        - name: FLYWAY_URL
+          value: jdbc:mysql://catalog-mysql:3306/catalog_write?allowPublicKeyRetrieval=true&useSSL=false
+        - name: FLYWAY_USER
+          value: catalog
+        - name: FLYWAY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_DB_PASSWORD
+        - name: FLYWAY_LOCATIONS
+          value: filesystem:/flyway/sql
+        - name: FLYWAY_CONNECT_RETRIES
+          value: '60'
+        command:
+        - flyway
+        - migrate
+        volumeMounts:
+        - name: config
+          mountPath: /flyway/sql
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: catalog-flyway-sql

@@ -1,0 +1,80 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-mysql
+  namespace: library
+spec:
+  replicas: 1
+
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: catalog-mysql
+
+  template:
+    metadata:
+      labels:
+        app: catalog-mysql
+
+    spec:
+      containers:
+        - name: catalog-mysql
+          image: mysql:8.4
+
+          ports:
+            - containerPort: 3306
+
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: library-secrets
+                  key: CATALOG_ROOT_PASSWORD
+
+            - name: MYSQL_DATABASE
+              value: catalog_write
+
+            - name: MYSQL_USER
+              value: catalog
+
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: library-secrets
+                  key: CATALOG_DB_PASSWORD
+
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - >
+                  MYSQL_PWD="$MYSQL_PASSWORD"
+                  mysql --protocol=TCP
+                  -h 127.0.0.1
+                  -u "$MYSQL_USER"
+                  "$MYSQL_DATABASE"
+                  -e "SELECT 1" >/dev/null 2>&1
+
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 15
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: catalog-mysql-data

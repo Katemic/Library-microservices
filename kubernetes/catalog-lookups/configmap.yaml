@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-lookups-sql
+  namespace: library
+data:
+  lookups.sql: "\n-- Fixed Catalog reference data for development\n-- Creates no items, books, board games or reviews.\n\
+    \n-- Languages\nINSERT INTO `language` (`id`, `language`) VALUES\n  (11, 'English'),\n  (12, 'Danish')\nON DUPLICATE\
+    \ KEY UPDATE\n  `language` = VALUES(`language`);\n\n-- Publishers\nINSERT INTO `publisher` (`id`, `name`) VALUES\n\
+    \  (11, 'Northstar Books'),\n  (12, 'Lantern Games')\nON DUPLICATE KEY UPDATE\n  `name` = VALUES(`name`);\n\n\
+    -- Creators\nINSERT INTO `creator`\n  (`id`, `first_name`, `last_name`,\n   `birthday`, `description`)\nVALUES\n\
+    \  (21, 'Mira', 'Ellis', '1982-04-08',\n   'Fiction writer'),\n  (22, 'Jonah', 'Reed', NULL,\n   'Author and\
+    \ game designer'),\n  (23, 'Freya', 'Sol', '1990-11-02',\n   NULL),\n  (24, 'Kai', 'Andersen', NULL,\n   'Board-game\
+    \ designer')\nON DUPLICATE KEY UPDATE\n  `first_name` = VALUES(`first_name`),\n  `last_name` = VALUES(`last_name`),\n\
+    \  `birthday` = VALUES(`birthday`),\n  `description` = VALUES(`description`);\n\n-- Genres\nINSERT INTO `genre`\
+    \ (`id`, `name`) VALUES\n  (31, 'Fantasy'),\n  (32, 'Strategy'),\n  (33, 'Mystery')\nON DUPLICATE KEY UPDATE\n\
+    \  `name` = VALUES(`name`);\n\n-- Tags\nINSERT INTO `tag` (`id`, `name`) VALUES\n  (41, 'Adventure'),\n  (42,\
+    \ 'Family'),\n  (43, 'Puzzle'),\n  (44, 'Nordic')\nON DUPLICATE KEY UPDATE\n  `name` = VALUES(`name`);\n"

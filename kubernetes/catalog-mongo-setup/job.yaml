@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-mongo-setup
+  namespace: library
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: catalog-mongo-setup
+        image: mongo:8
+        env:
+        - name: MONGO_USER
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_MONGO_USER
+        - name: MONGO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_MONGO_PASSWORD
+        command:
+        - /bin/sh
+        - -ec
+        - for i in $(seq 1 90); do mongosh --quiet --host catalog-mongodb --username "$MONGO_USER" --password "$MONGO_PASSWORD"
+          --authenticationDatabase admin --eval "db.adminCommand({ping:1})" >/dev/null 2>&1 && break; sleep 3; done;
+          exec mongosh --host catalog-mongodb --username "$MONGO_USER" --password "$MONGO_PASSWORD" --authenticationDatabase
+          admin /scripts/setup.js
+        volumeMounts:
+        - name: config
+          mountPath: /scripts
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: catalog-mongo-script

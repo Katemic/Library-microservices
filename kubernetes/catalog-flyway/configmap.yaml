@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalog-flyway-sql
+  namespace: library
+data:
+  V1__initial_catalog_schema.sql: "-- V1__initial_catalog_schema.sql\n-- Source: DLS commands.pdf (Catalog relational\
+    \ schema).\n-- Flyway runs this migration against the database configured in FLYWAY_URL\n-- (catalog_write).\
+    \ Tables use the current database.\n--\n-- IMPORTANT: review.loaner_id is an external service identifier.\n\
+    -- It remains NOT NULL and part of the review primary key, but intentionally\n-- has NO foreign key to a `loaner`\
+    \ table owned by another microservice.\n-- All other foreign keys from the supplied schema are preserved.\n\
+    --\n-- This migration is the source of truth for the initial MySQL schema.\n-- Apply on an empty catalog_write\
+    \ database. Do not edit after applying.\n-- create V2__...sql for later changes.\n\n-- -----------------------------------------------------\n\
+    -- Table `language`\n-- -----------------------------------------------------\nCREATE TABLE `language` (\n \
+    \ `id` INT NOT NULL AUTO_INCREMENT,\n  `language` VARCHAR(45) NOT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE INDEX\
+    \ `language_UNIQUE` (`language` ASC) VISIBLE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `publisher`\n-- -----------------------------------------------------\nCREATE TABLE `publisher` (\n\
+    \  `id` INT NOT NULL AUTO_INCREMENT,\n  `name` VARCHAR(70) NOT NULL,\n  PRIMARY KEY (`id`))\nENGINE = InnoDB\n\
+    DEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n-- Table `item`\n\
+    -- -----------------------------------------------------\nCREATE TABLE `item` (\n  `id` INT NOT NULL AUTO_INCREMENT,\n\
+    \  `name` VARCHAR(255) NOT NULL,\n  `release_year` SMALLINT UNSIGNED NULL DEFAULT NULL,\n  `description` TEXT\
+    \ NULL DEFAULT NULL,\n  `review_summary` TEXT NULL DEFAULT NULL,\n  `media_type` ENUM('book', 'boardgame') NOT\
+    \ NULL,\n  `image` VARCHAR(2048) NULL DEFAULT NULL,\n  `language_id` INT NOT NULL,\n  `publisher_id` INT NOT\
+    \ NULL,\n  `average_stars` DECIMAL(2,1) NULL DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  INDEX `language_id_idx`\
+    \ (`language_id` ASC) VISIBLE,\n  INDEX `publisher_id_idx` (`publisher_id` ASC) VISIBLE,\n  INDEX `idx_item_name`\
+    \ (`name` ASC) VISIBLE,\n  INDEX `idx_item_media_type` (`media_type` ASC) VISIBLE,\n  CONSTRAINT `fk_item_language`\n\
+    \    FOREIGN KEY (`language_id`)\n    REFERENCES `language` (`id`),\n  CONSTRAINT `fk_item_publisher`\n    FOREIGN\
+    \ KEY (`publisher_id`)\n    REFERENCES `publisher` (`id`),\n  CONSTRAINT `chk_item_release_year`\n  CHECK (`release_year`\
+    \ IS NULL OR `release_year` BETWEEN 1000 AND 2100),\n  CONSTRAINT `chk_item_average_stars`\n  CHECK (`average_stars`\
+    \ IS NULL OR `average_stars` BETWEEN 0 AND 5))\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `boardgame`\n-- -----------------------------------------------------\nCREATE TABLE `boardgame` (\n\
+    \  `id` INT NOT NULL AUTO_INCREMENT,\n  `no_of_players` VARCHAR(20) NULL DEFAULT NULL,\n  `play_time` VARCHAR(20)\
+    \ NULL DEFAULT NULL,\n  `age_group` VARCHAR(20) NULL DEFAULT NULL,\n  `item_id` INT NOT NULL,\n  PRIMARY KEY\
+    \ (`id`),\n  UNIQUE INDEX `item_id_UNIQUE` (`item_id` ASC) VISIBLE,\n  INDEX `item_id_idx` (`item_id` ASC) VISIBLE,\n\
+    \  CONSTRAINT `fk_boardgame_item`\n    FOREIGN KEY (`item_id`)\n    REFERENCES `item` (`id`)\n    ON DELETE\
+    \ CASCADE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `book`\n-- -----------------------------------------------------\nCREATE TABLE `book` (\n  `id` INT\
+    \ NOT NULL AUTO_INCREMENT,\n  `ISBN` VARCHAR(17) NULL DEFAULT NULL,\n  `no_of_pages` SMALLINT UNSIGNED NULL\
+    \ DEFAULT NULL,\n  `version` VARCHAR(45) NULL DEFAULT NULL,\n  `item_id` INT NOT NULL,\n  PRIMARY KEY (`id`),\n\
+    \  UNIQUE INDEX `item_id_UNIQUE` (`item_id` ASC) VISIBLE,\n  UNIQUE INDEX `ISBN_UNIQUE` (`ISBN` ASC) VISIBLE,\n\
+    \  INDEX `item_id_idx` (`item_id` ASC) VISIBLE,\n  CONSTRAINT `fk_book_item`\n    FOREIGN KEY (`item_id`)\n\
+    \    REFERENCES `item` (`id`)\n    ON DELETE CASCADE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\
+    -- -----------------------------------------------------\n-- Table `creator`\n-- -----------------------------------------------------\n\
+    CREATE TABLE `creator` (\n  `id` INT NOT NULL AUTO_INCREMENT,\n  `first_name` VARCHAR(45) NULL DEFAULT NULL,\n\
+    \  `last_name` VARCHAR(45) NULL DEFAULT NULL,\n  `birthday` DATE NULL DEFAULT NULL,\n  `description` MEDIUMTEXT\
+    \ NULL DEFAULT NULL,\n  PRIMARY KEY (`id`))\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n-- -----------------------------------------------------\n\
+    -- Table `genre`\n-- -----------------------------------------------------\nCREATE TABLE `genre` (\n  `id` INT\
+    \ NOT NULL AUTO_INCREMENT,\n  `name` VARCHAR(45) NULL DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE INDEX `name_UNIQUE`\
+    \ (`name` ASC) VISIBLE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `item_creator`\n-- -----------------------------------------------------\nCREATE TABLE `item_creator`\
+    \ (\n  `item_id` INT NOT NULL,\n  `creator_id` INT NOT NULL,\n  PRIMARY KEY (`item_id`, `creator_id`),\n  INDEX\
+    \ `creator_id_idx` (`creator_id` ASC) VISIBLE,\n  CONSTRAINT `fk_itemcreator_creator`\n    FOREIGN KEY (`creator_id`)\n\
+    \    REFERENCES `creator` (`id`),\n  CONSTRAINT `fk_itemcreator_item`\n    FOREIGN KEY (`item_id`)\n    REFERENCES\
+    \ `item` (`id`)\n    ON DELETE CASCADE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `item_genre`\n-- -----------------------------------------------------\nCREATE TABLE `item_genre` (\n\
+    \ `item_id` INT NOT NULL,\n `genre_id` INT NOT NULL,\n PRIMARY KEY (`item_id`, `genre_id`),\n INDEX `genre_id_idx`\
+    \ (`genre_id` ASC) VISIBLE,\n CONSTRAINT `fk_itemgenre_genre`\n   FOREIGN KEY (`genre_id`)\n   REFERENCES `genre`\
+    \ (`id`),\n CONSTRAINT `fk_itemgenre_item`\n   FOREIGN KEY (`item_id`)\n   REFERENCES `item` (`id`)\n   ON DELETE\
+    \ CASCADE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `tag`\n-- -----------------------------------------------------\nCREATE TABLE `tag` (\n  `id` INT NOT\
+    \ NULL AUTO_INCREMENT,\n  `name` VARCHAR(45) NULL DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE INDEX `name_UNIQUE`\
+    \ (`name` ASC) VISIBLE)\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n\n-- -----------------------------------------------------\n\
+    -- Table `item_tag`\n-- -----------------------------------------------------\nCREATE TABLE `item_tag` (\n \
+    \ `item_id` INT NOT NULL,\n  `tag_id` INT NOT NULL,\n  PRIMARY KEY (`item_id`, `tag_id`),\n  INDEX `tag_id_idx`\
+    \ (`tag_id` ASC) VISIBLE,\n  CONSTRAINT `fk_itemtag_item`\n    FOREIGN KEY (`item_id`)\n    REFERENCES `item`\
+    \ (`id`)\n    ON DELETE CASCADE,\n  CONSTRAINT `fk_itemtag_tag`\n    FOREIGN KEY (`tag_id`)\n    REFERENCES\
+    \ `tag` (`id`))\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n\n-- -----------------------------------------------------\n\
+    -- Table `review`\n-- -----------------------------------------------------\nCREATE TABLE `review` (\n `loaner_id`\
+    \ INT NOT NULL,\n `item_id` INT NOT NULL,\n `no_of_stars` DECIMAL(2,1) NOT NULL,\n `text` TEXT NULL DEFAULT\
+    \ NULL,\n PRIMARY KEY (`loaner_id`, `item_id`),\n INDEX `item_id_idx` (`item_id` ASC) VISIBLE,\n CONSTRAINT\
+    \ `fk_review_item`\n   FOREIGN KEY (`item_id`)\n   REFERENCES `item` (`id`)\n   ON DELETE CASCADE,\n CONSTRAINT\
+    \ `chk_review_stars`\n   CHECK (`no_of_stars` BETWEEN 1 AND 5))\nENGINE = InnoDB\nDEFAULT CHARACTER SET = utf8mb4;\n"
+  V2__add_cqrs_outbox.sql: "\n-- ========================================\n-- V2: CQRS and Transactional Outbox\n\
+    -- ========================================\n\n-- Add version tracking for synchronization\n-- between MySQL\
+    \ and MongoDB\n\nALTER TABLE item\nADD COLUMN version BIGINT NOT NULL DEFAULT 1;\n\n-- Add soft deletion / tombstone\
+    \ support\n\nALTER TABLE item\nADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT FALSE;\n\nALTER TABLE item\nADD\
+    \ COLUMN deleted_at_utc DATETIME(6) NULL;\n\n-- Index for active catalog queries\n\nCREATE INDEX idx_item_is_deleted\n\
+    ON item (is_deleted);\n\n\n-- ========================================\n-- Transactional Outbox\n-- ========================================\n\
+    \nCREATE TABLE outbox_messages (\n\n    id CHAR(36) NOT NULL,\n\n    item_id INT NOT NULL,\n    item_version\
+    \ BIGINT NOT NULL,\n\n    event_type VARCHAR(100) NOT NULL,\n    payload LONGTEXT NOT NULL,\n\n    occurred_at_utc\
+    \ DATETIME(6) NOT NULL,\n\n    projected_at_utc DATETIME(6) NULL,\n    published_at_utc DATETIME(6) NULL,\n\n\
+    \    retry_count INT NOT NULL DEFAULT 0,\n    last_error TEXT NULL,\n\n    PRIMARY KEY (id),\n\n    INDEX idx_outbox_projection\
+    \ (\n        projected_at_utc\n    ),\n\n    INDEX idx_outbox_publication (\n        published_at_utc\n    ),\n\
+    \n    INDEX idx_outbox_item_version (\n        item_id,\n        item_version\n    )\n\n)\nENGINE = InnoDB\n\
+    DEFAULT CHARACTER SET = utf8mb4;\n"

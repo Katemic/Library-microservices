@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-neo4j
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: recommendation-neo4j
+  template:
+    metadata:
+      labels:
+        app: recommendation-neo4j
+    spec:
+      containers:
+      - name: recommendation-neo4j
+        image: neo4j:5
+        imagePullPolicy: Always
+        env:
+        - name: AUTH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NEO4J_PASSWORD
+        - name: NEO4J_AUTH
+          value: neo4j/$(AUTH_PASSWORD)
+        - name: NEO4J_server_memory_heap_initial__size
+          value: 256m
+        - name: NEO4J_server_memory_heap_max__size
+          value: 512m
+        - name: NEO4J_server_memory_pagecache_size
+          value: 256m
+        ports:
+        - name: browser
+          containerPort: 7474
+        - name: bolt
+          containerPort: 7687
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            memory: 2Gi
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -ec
+            - cypher-shell -a bolt://localhost:7687 -u neo4j -p "${NEO4J_AUTH#*/}" "RETURN 1" >/dev/null 2>&1
+          initialDelaySeconds: 35
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: recommendation-neo4j-data

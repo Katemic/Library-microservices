@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-worker
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notification-worker
+  template:
+    metadata:
+      labels:
+        app: notification-worker
+    spec:
+      containers:
+      - name: notification-worker
+        image: katemic/library-notification:v0.1
+        imagePullPolicy: Always
+        env:
+        - name: NOTIFICATION_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NOTIFICATION_DB_PASSWORD
+        - name: RABBIT_USER
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RABBIT_USER
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RABBIT_PASSWORD
+        - name: BREVO_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: BREVO_API_KEY
+        - name: BREVO_SENDER_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: BREVO_SENDER_EMAIL
+        - name: DOTNET_ENVIRONMENT
+          value: Development
+        - name: ConnectionStrings__MySql
+          value: Server=notification-mysql;Port=3306;Database=notificationdb;User=notification_user;Password=$(NOTIFICATION_DB_PASSWORD)
+        - name: RabbitMQ__Host
+          value: rabbitmq
+        - name: RabbitMQ__Port
+          value: '5672'
+        - name: RabbitMQ__Username
+          value: $(RABBIT_USER)
+        - name: RabbitMQ__Password
+          value: $(RABBIT_PASSWORD)
+        - name: Brevo__ApiKey
+          value: $(BREVO_API_KEY)
+        - name: Brevo__SenderEmail
+          value: $(BREVO_SENDER_EMAIL)
+        - name: Brevo__SenderName
+          value: Library Notifications
+        - name: Notification__DryRun
+          value: 'true'
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 750Mi

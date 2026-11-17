@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-mysql
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: notification-mysql
+  template:
+    metadata:
+      labels:
+        app: notification-mysql
+    spec:
+      containers:
+      - name: notification-mysql
+        image: mysql:8.4
+        imagePullPolicy: Always
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NOTIFICATION_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: notificationdb
+        - name: MYSQL_USER
+          value: notification_user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: NOTIFICATION_DB_PASSWORD
+        ports:
+        - name: http
+          containerPort: 3306
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -ec
+            - MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE" -e
+              "SELECT 1" >/dev/null 2>&1
+          periodSeconds: 10
+          failureThreshold: 15
+          initialDelaySeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: notification-mysql-data

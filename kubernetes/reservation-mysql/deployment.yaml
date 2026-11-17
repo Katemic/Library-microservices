@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-mysql
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: reservation-mysql
+  template:
+    metadata:
+      labels:
+        app: reservation-mysql
+    spec:
+      containers:
+      - name: reservation-mysql
+        image: mysql:8.4
+        imagePullPolicy: Always
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RESERVATION_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: ReservationDb
+        - name: MYSQL_USER
+          value: reservationuser
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RESERVATION_DB_PASSWORD
+        ports:
+        - name: http
+          containerPort: 3306
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -ec
+            - MYSQL_PWD="$MYSQL_PASSWORD" mysql --protocol=TCP -h 127.0.0.1 -u "$MYSQL_USER" "$MYSQL_DATABASE" -e
+              "SELECT 1" >/dev/null 2>&1
+          periodSeconds: 10
+          failureThreshold: 15
+          initialDelaySeconds: 10
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: reservation-mysql-data

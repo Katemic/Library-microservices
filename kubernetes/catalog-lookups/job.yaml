@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-lookups
+  namespace: library
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: catalog-lookups
+        image: mysql:8.4
+        env:
+        - name: MYSQL_PWD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_DB_PASSWORD
+        command:
+        - /bin/sh
+        - -ec
+        - for i in $(seq 1 90); do mysql -h catalog-mysql -u catalog catalog_write -e "SELECT 1 FROM language LIMIT
+          1" >/dev/null 2>&1 && break; sleep 3; done; mysql -h catalog-mysql -u catalog catalog_write < /seeds/lookups.sql
+        volumeMounts:
+        - name: config
+          mountPath: /seeds
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: catalog-lookups-sql

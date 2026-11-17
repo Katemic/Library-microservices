@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-mongodb
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: catalog-mongodb
+  template:
+    metadata:
+      labels:
+        app: catalog-mongodb
+    spec:
+      containers:
+      - name: catalog-mongodb
+        image: mongo:8
+        imagePullPolicy: Always
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_MONGO_USER
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: CATALOG_MONGO_PASSWORD
+        ports:
+        - name: http
+          containerPort: 27017
+        volumeMounts:
+        - name: data
+          mountPath: /data/db
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -ec
+            - mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD"
+              --authenticationDatabase admin --eval "quit(db.adminCommand({ping:1}).ok?0:1)" >/dev/null
+          periodSeconds: 10
+          initialDelaySeconds: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: catalog-mongodb-data

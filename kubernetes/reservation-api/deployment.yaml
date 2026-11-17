@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-api
+  namespace: library
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: reservation-api
+  template:
+    metadata:
+      labels:
+        app: reservation-api
+    spec:
+      containers:
+      - name: reservation-api
+        image: katemic/library-reservation:v0.1
+        imagePullPolicy: Always
+        env:
+        - name: RESERVATION_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RESERVATION_DB_PASSWORD
+        - name: RABBIT_USER
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RABBIT_USER
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: library-secrets
+              key: RABBIT_PASSWORD
+        - name: ASPNETCORE_ENVIRONMENT
+          value: Development
+        - name: ASPNETCORE_HTTP_PORTS
+          value: '8080'
+        - name: ConnectionStrings__DefaultConnection
+          value: Server=reservation-mysql;Port=3306;Database=ReservationDb;User ID=reservationuser;Password=$(RESERVATION_DB_PASSWORD)
+        - name: RabbitMQ__Host
+          value: rabbitmq
+        - name: RabbitMQ__Port
+          value: '5672'
+        - name: RabbitMQ__User
+          value: $(RABBIT_USER)
+        - name: RabbitMQ__Password
+          value: $(RABBIT_PASSWORD)
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 750Mi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 15
