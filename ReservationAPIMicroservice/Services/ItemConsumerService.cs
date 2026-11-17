@@ -1,5 +1,4 @@
 ﻿
-using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
@@ -10,276 +9,242 @@ using ReservationAPIMicroservice.Models;
 
 namespace ReservationAPIMicroservice.Services.Consumers;
 
-public class ItemConsumerService : BackgroundService
+public sealed class ItemConsumerService(
+    IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
+    ILogger<ItemConsumerService> logger
+) : BackgroundService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<ItemConsumerService> _logger;
+    private const string ExchangeName = "catalog.events";
+    private const string QueueName =
+        "reservation.catalog.items";
 
-    private IConnection? _connection;
-    private IChannel? _channel;
-
-    private const string ExchangeName = "items";
-    private const string QueueName = "reservation-items";
-
-    public ItemConsumerService(
-        IServiceScopeFactory scopeFactory,
-        IConfiguration configuration,
-        ILogger<ItemConsumerService> logger)
-    {
-        _scopeFactory = scopeFactory;
-        _configuration = configuration;
-        _logger = logger;
-    }
-
-    public override async Task StartAsync(
-        CancellationToken cancellationToken)
-    {
-        var factory = new ConnectionFactory
-        {
-            HostName = _configuration["RabbitMQ:Host"] ?? "localhost",
-            Port = int.TryParse(
-                _configuration["RabbitMQ:Port"], out var port)
-                ? port
-                : 5672,
-            UserName = _configuration["RabbitMQ:User"] ?? "guest",
-            Password = _configuration["RabbitMQ:Password"] ?? "guest"
-        };
-
-        _connection = await factory.CreateConnectionAsync(
-            cancellationToken);
-
-        _channel = await _connection.CreateChannelAsync(
-            cancellationToken: cancellationToken);
-
-        await _channel.ExchangeDeclareAsync(
-            exchange: ExchangeName,
-            type: ExchangeType.Topic,
-            durable: true,
-            cancellationToken: cancellationToken);
-
-        await _channel.QueueDeclareAsync(
-            queue: QueueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            cancellationToken: cancellationToken);
-
-        await _channel.QueueBindAsync(
-            queue: QueueName,
-            exchange: ExchangeName,
-            routingKey: "item.*",
-            cancellationToken: cancellationToken);
-
-        await base.StartAsync(cancellationToken);
-    }
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web);
 
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
-        if (_channel is null)
-            return;
+        var factory = new ConnectionFactory
+        {
+            HostName =
+                configuration["RabbitMQ:Host"] ?? "rabbitmq",
 
-        var consumer = new AsyncEventingBasicConsumer(_channel);
+            Port = configuration.GetValue<int?>(
+                "RabbitMQ:Port") ?? 5672,
 
-        consumer.ReceivedAsync += async (_, ea) =>
+            UserName =
+                configuration["RabbitMQ:User"] ?? "guest",
+
+            Password =
+                configuration["RabbitMQ:Password"] ?? "guest",
+
+            AutomaticRecoveryEnabled = true
+        };
+
+        await using var connection =
+            await factory.CreateConnectionAsync(
+                stoppingToken);
+
+        await using var channel =
+            await connection.CreateChannelAsync(
+                cancellationToken: stoppingToken);
+
+        await channel.ExchangeDeclareAsync(
+            ExchangeName,
+            ExchangeType.Topic,
+            durable: true,
+            autoDelete: false,
+            cancellationToken: stoppingToken);
+
+        await channel.QueueDeclareAsync(
+            QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            cancellationToken: stoppingToken);
+
+        await channel.QueueBindAsync(
+            QueueName,
+            ExchangeName,
+            "catalog.item.*",
+            cancellationToken: stoppingToken);
+
+        await channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: 1,
+            global: false,
+            cancellationToken: stoppingToken);
+
+        var consumer =
+            new AsyncEventingBasicConsumer(channel);
+
+        consumer.ReceivedAsync += async (_, args) =>
         {
             try
             {
-                var body = Encoding.UTF8.GetString(ea.Body.ToArray());
+                await ProcessMessageAsync(
+                    args.Body.ToArray(),
+                    args.RoutingKey,
+                    stoppingToken);
 
-                switch (ea.RoutingKey)
-                {
-                    case "item.created":
-                        {
-                            var message =
-                                JsonSerializer.Deserialize<ItemCreatedEvent>(body);
-
-                            if (message is null)
-                                throw new InvalidOperationException(
-                                    "Invalid item.created message.");
-
-                            await HandleCreatedAsync(message);
-                            break;
-                        }
-
-                    case "item.updated":
-                        {
-                            var message =
-                                JsonSerializer.Deserialize<ItemUpdatedEvent>(body);
-
-                            if (message is null)
-                                throw new InvalidOperationException(
-                                    "Invalid item.updated message.");
-
-                            await HandleUpdatedAsync(message);
-                            break;
-                        }
-
-                    case "item.deleted":
-                        {
-                            var message =
-                                JsonSerializer.Deserialize<ItemDeletedEvent>(body);
-
-                            if (message is null)
-                                throw new InvalidOperationException(
-                                    "Invalid item.deleted message.");
-
-                            await HandleDeletedAsync(message);
-                            break;
-                        }
-
-                    default:
-                        _logger.LogWarning(
-                            "Unknown item event: {RoutingKey}",
-                            ea.RoutingKey);
-                        break;
-                }
-
-                await _channel.BasicAckAsync(
-                    ea.DeliveryTag,
+                // Ack after the database succeeds.
+                await channel.BasicAckAsync(
+                    args.DeliveryTag,
                     multiple: false,
                     cancellationToken: stoppingToken);
             }
+            catch (JsonException ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Invalid Catalog event {RoutingKey}",
+                    args.RoutingKey);
+
+                // Invalid events should not retry forever.
+                await channel.BasicRejectAsync(
+                    args.DeliveryTag,
+                    requeue: false,
+                    cancellationToken: stoppingToken);
+            }
+            catch (OperationCanceledException)
+                when (stoppingToken.IsCancellationRequested)
+            {
+                // Unacknowledged messages can be redelivered.
+            }
             catch (Exception ex)
             {
-                _logger.LogError(
+                logger.LogError(
                     ex,
-                    "Failed to process RabbitMQ event {RoutingKey}",
-                    ea.RoutingKey);
+                    "Catalog event processing failed");
 
-                // Requeue for another attempt.
-                await _channel.BasicNackAsync(
-                    ea.DeliveryTag,
+                // Simple development retry.
+                await Task.Delay(
+                    TimeSpan.FromSeconds(2),
+                    stoppingToken);
+
+                await channel.BasicNackAsync(
+                    args.DeliveryTag,
                     multiple: false,
                     requeue: true,
                     cancellationToken: stoppingToken);
             }
         };
 
-        await _channel.BasicConsumeAsync(
-            queue: QueueName,
+        await channel.BasicConsumeAsync(
+            QueueName,
             autoAck: false,
             consumer: consumer,
             cancellationToken: stoppingToken);
 
-        // Keep the background service alive while consuming.
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        logger.LogInformation(
+            "Reservation subscribed to catalog.item.* " +
+            "on {Queue}",
+            QueueName);
+
+        await Task.Delay(
+            Timeout.Infinite,
+            stoppingToken);
     }
 
-    private async Task HandleCreatedAsync(ItemCreatedEvent message)
+    private async Task ProcessMessageAsync(
+        byte[] body,
+        string routingKey,
+        CancellationToken ct)
     {
-        using var scope = _scopeFactory.CreateScope();
+        var message =
+            JsonSerializer.Deserialize<CatalogItemEventMessage>(
+                body,
+                JsonOptions);
 
-        var context = scope.ServiceProvider
+        if (message?.Item is null)
+            throw new JsonException(
+                "Catalog event contains no item");
+
+        if (message.EventType != routingKey ||
+            message.EventType is not
+                ("catalog.item.added" or
+                 "catalog.item.updated" or
+                 "catalog.item.deleted"))
+        {
+            throw new JsonException(
+                "Unsupported Catalog event");
+        }
+
+        if (message.SchemaVersion != 1 ||
+            message.EventId == Guid.Empty ||
+            message.ItemId <= 0 ||
+            message.ItemVersion <= 0 ||
+            message.Item.Id != message.ItemId ||
+            message.Item.ItemVersion != message.ItemVersion ||
+            string.IsNullOrWhiteSpace(message.Item.Name) ||
+            message.Item.Name.Length > 255)
+        {
+            throw new JsonException(
+                "Invalid Catalog event data");
+        }
+
+        var isDeleted =
+            message.EventType == "catalog.item.deleted";
+
+        if (message.Item.IsDeleted != isDeleted)
+            throw new JsonException(
+                "Event deletion state mismatch");
+
+        if (isDeleted &&
+            message.Item.DeletedAtUtc is null)
+            throw new JsonException(
+                "Missing deletion timestamp");
+
+        await using var scope =
+            scopeFactory.CreateAsyncScope();
+
+        var db = scope.ServiceProvider
             .GetRequiredService<ReservationDbContext>();
 
-        var existing = await context.Items
-            .FirstOrDefaultAsync(i => i.Id == message.Id);
+        var item = await db.Items
+            .SingleOrDefaultAsync(
+                x => x.Id == message.ItemId,
+                ct);
 
-        if (existing is not null)
+        if (item is null)
         {
-            // Make processing a duplicate event safe.
-            if (existing.Name != message.Name ||
-                existing.IsDeleted)
+            db.Items.Add(new Item
             {
-                existing.Name = message.Name;
-                existing.IsDeleted = false;
-                await context.SaveChangesAsync();
-            }
+                Id = message.ItemId,
+                Name = message.Item.Name,
+                ItemVersion = message.ItemVersion,
+                IsDeleted = isDeleted,
+                DeletedAtUtc =
+                    message.Item.DeletedAtUtc
+            });
 
-            _logger.LogInformation(
-                "Item {ItemId} already exists; synchronized it.",
-                message.Id);
+            await db.SaveChangesAsync(ct);
+        }
+        else if (message.ItemVersion > item.ItemVersion)
+        {
+            item.Name = message.Item.Name;
+            item.ItemVersion = message.ItemVersion;
+            item.IsDeleted = isDeleted;
+            item.DeletedAtUtc =
+                message.Item.DeletedAtUtc;
 
-            return;
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Ignored duplicate/old Catalog event " +
+                "{EventId} for item {ItemId}, version {Version}",
+                message.EventId,
+                message.ItemId,
+                message.ItemVersion);
         }
 
-        context.Items.Add(new Item
-        {
-            Id = message.Id,
-            Name = message.Name,
-            IsDeleted = false
-        });
-
-        await context.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Created item {ItemId} from RabbitMQ.",
-            message.Id);
-    }
-
-    private async Task HandleUpdatedAsync(ItemUpdatedEvent message)
-    {
-        using var scope = _scopeFactory.CreateScope();
-
-        var context = scope.ServiceProvider
-            .GetRequiredService<ReservationDbContext>();
-
-        var item = await context.Items
-            .FirstOrDefaultAsync(i => i.Id == message.Id);
-
-        if (item is null)
-        {
-            _logger.LogWarning(
-                "Cannot update item {ItemId}: it does not exist.",
-                message.Id);
-
-            return;
-        }
-
-        item.Name = message.Name;
-
-        await context.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Updated item {ItemId} from RabbitMQ.",
-            message.Id);
-    }
-
-    private async Task HandleDeletedAsync(ItemDeletedEvent message)
-    {
-        using var scope = _scopeFactory.CreateScope();
-
-        var context = scope.ServiceProvider
-            .GetRequiredService<ReservationDbContext>();
-
-        var item = await context.Items
-            .FirstOrDefaultAsync(i => i.Id == message.Id);
-
-        if (item is null)
-        {
-            _logger.LogInformation(
-                "Item {ItemId} is already absent.",
-                message.Id);
-
-            return;
-        }
-
-        item.IsDeleted = true;
-
-        await context.SaveChangesAsync();
-
-        _logger.LogInformation(
-            "Soft-deleted item {ItemId} from RabbitMQ.",
-            message.Id);
-    }
-
-    public override async Task StopAsync(
-        CancellationToken cancellationToken)
-    {
-        if (_channel is not null)
-        {
-            await _channel.CloseAsync(cancellationToken);
-            await _channel.DisposeAsync();
-        }
-
-        if (_connection is not null)
-        {
-            await _connection.CloseAsync(cancellationToken);
-            await _connection.DisposeAsync();
-        }
-
-        await base.StopAsync(cancellationToken);
+        logger.LogInformation(
+            "Handled {EventType}: item {ItemId}, version {Version}",
+            message.EventType,
+            message.ItemId,
+            message.ItemVersion);
     }
 }

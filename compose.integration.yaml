@@ -229,9 +229,101 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
+    
+
+  # =====================================
+  # RESERVATION - MYSQL DATABASE
+  # =====================================
+  reservation-mysql:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESERVATION_ROOT_PASSWORD}
+      MYSQL_DATABASE: ReservationDb
+      MYSQL_USER: reservationuser
+      MYSQL_PASSWORD: ${RESERVATION_DB_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3309:3306"
+
+    volumes:
+      - reservation_mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+
+  # =====================================
+  # RESERVATION - FLYWAY
+  # =====================================
+  reservation-flyway:
+    image: flyway/flyway:13.7.0
+    command: migrate
+
+    environment:
+      FLYWAY_URL: "jdbc:mysql://reservation-mysql:3306/ReservationDb?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: reservationuser
+      FLYWAY_PASSWORD: ${RESERVATION_DB_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+    volumes:
+      - ./ReservationAPIMicroservice/Database/Migrations:/flyway/sql:ro
+
+    depends_on:
+      reservation-mysql:
+        condition: service_healthy
+
+    restart: "no"
+
+
+  # =====================================
+  # RESERVATION API
+  # =====================================
+  reservation-api:
+    build:
+      context: ./ReservationAPIMicroservice
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:18083:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      ConnectionStrings__DefaultConnection: "Server=reservation-mysql;Port=3306;Database=ReservationDb;User ID=reservationuser;Password=${RESERVATION_DB_PASSWORD}"
+
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+    depends_on:
+      reservation-flyway:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+    restart: unless-stopped
+    
 
 volumes:
   rabbit_data:
   catalog_mysql_data:
   catalog_mongo_data:
   loan_mysql_data:
+  reservation_mysql_data:

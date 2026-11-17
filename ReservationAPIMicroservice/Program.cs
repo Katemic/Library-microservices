@@ -47,6 +47,13 @@ builder.Services.AddHostedService<ItemConsumerService>();
 
 var app = builder.Build();
 
+app.MapGet("/health", () =>
+    Results.Ok(new
+    {
+        status = "ok",
+        service = "reservation"
+    }));
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
