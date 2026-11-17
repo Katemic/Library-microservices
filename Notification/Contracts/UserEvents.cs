@@ -1,20 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿
+namespace Notification.Contracts;
 
-namespace Notification.Contracts
-{
-    public record UserCreated(
-        int Id,
-        string FirstName,
-        string LastName,
-        string Email
-    );
+public record UserEventData(
+    int UserId,
+    string? KeycloakSubject,
+    string Email,
+    long UserVersion
+);
 
-    public record UserUpdateEmail(
-        int Id,
-        string Email
-    );
-}
+public record UserEventEnvelope(
+    Guid EventId,
+    string EventType,
+    int SchemaVersion,
+    DateTime OccurredAtUtc,
+    UserEventData Data
+);
+

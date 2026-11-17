@@ -1,177 +1,249 @@
-﻿using Notification.Services;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿
+using Notification.Services;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using System.Text;
 
-namespace Notification.Consumers
+namespace Notification.Consumers;
+
+internal class RabbitMqConsumer : BackgroundService
 {
-    internal class RabbitMqConsumer : BackgroundService
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<RabbitMqConsumer> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    private IConnection? _connection;
+    private IChannel? _channel;
+
+    private const string QueueName = "notification.messages";
+    private const string DeadExchange = "notification.dead";
+    private const string DeadQueue = "notification.dead";
+
+    public RabbitMqConsumer(
+        IConfiguration configuration,
+        IServiceScopeFactory scopeFactory,
+        ILogger<RabbitMqConsumer> logger)
     {
-        private readonly IConfiguration _configuration;
-        //private readonly INotificationService _notificationService;
-        private readonly ILogger<RabbitMqConsumer> _logger;
-        private readonly IServiceScopeFactory _scopeFactory;
+        _configuration = configuration;
+        _scopeFactory = scopeFactory;
+        _logger = logger;
+    }
 
-        private IConnection? _connection;
-        private IChannel? _channel;
-
-        private readonly string[] _routingKeys =
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
+    {
+        var factory = new ConnectionFactory
         {
-            "User.Created",
-            "User.UpdateEmail",
+            HostName =
+                _configuration["RabbitMQ:Host"] ?? "rabbitmq",
 
-            "Fine.Created",
-            "Fine.Paid",
-            "Fine.Overdue",
+            Port = _configuration.GetValue<int?>(
+                "RabbitMQ:Port") ?? 5672,
 
-            "Loan.Returned",
-            "Loan.Overdue",
+            UserName = _configuration["RabbitMQ:Username"]
+                ?? throw new InvalidOperationException(
+                    "RabbitMQ username missing"),
 
-            "Reservation.Ready",
-            "Reservation.Created",
-            "Reservation.Cancelled"
+            Password = _configuration["RabbitMQ:Password"]
+                ?? throw new InvalidOperationException(
+                    "RabbitMQ password missing"),
+
+            AutomaticRecoveryEnabled = true
         };
 
-        public RabbitMqConsumer(
-            IConfiguration configuration,
-            IServiceScopeFactory scopeFactory,
-            ILogger<RabbitMqConsumer> logger)
-        {
-            _configuration = configuration;
-            _scopeFactory = scopeFactory;
-            _logger = logger;
-        }
+        _connection = await factory.CreateConnectionAsync(
+            stoppingToken);
 
-        protected override async Task ExecuteAsync(
-            CancellationToken stoppingToken)
-        {
-            var factory = new ConnectionFactory
+        _channel = await _connection.CreateChannelAsync(
+            cancellationToken: stoppingToken);
+
+        // ======================================
+        // DEAD-LETTER EXCHANGE AND QUEUE
+        // ======================================
+
+        await _channel.ExchangeDeclareAsync(
+            DeadExchange,
+            ExchangeType.Direct,
+            durable: true,
+            cancellationToken: stoppingToken);
+
+        await _channel.QueueDeclareAsync(
+            queue: DeadQueue,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            cancellationToken: stoppingToken);
+
+        await _channel.QueueBindAsync(
+            queue: DeadQueue,
+            exchange: DeadExchange,
+            routingKey: "failed",
+            cancellationToken: stoppingToken);
+
+        // ======================================
+        // MAIN NOTIFICATION QUEUE
+        // ======================================
+
+        await _channel.QueueDeclareAsync(
+            queue: QueueName,
+            durable: true,
+            exclusive: false,
+            autoDelete: false,
+            arguments: new Dictionary<string, object?>
             {
-                HostName = _configuration["RabbitMQ:Host"],
-                Port = _configuration.GetValue<int>("RabbitMQ:Port"),
-                UserName = _configuration["RabbitMQ:Username"],
-                Password = _configuration["RabbitMQ:Password"]
-            };
+                ["x-dead-letter-exchange"] = DeadExchange,
+                ["x-dead-letter-routing-key"] = "failed"
+            },
+            cancellationToken: stoppingToken);
 
-            _connection = await factory.CreateConnectionAsync(
-                cancellationToken: stoppingToken);
+        // ======================================
+        // EXCHANGE SUBSCRIPTIONS
+        // ======================================
 
-            _channel = await _connection.CreateChannelAsync(
-                cancellationToken: stoppingToken);
+        var subscriptions = new Dictionary<string, string[]>
+        {
+            ["user.events"] =
+            [
+                "user.created",
+                "user.email.updated"
+            ],
 
-            var exchange = _configuration["RabbitMQ:Exchange"]!;
-            var queue = _configuration["RabbitMQ:Queue"]!;
+            ["loan.events"] =
+            [
+                "Fine.Created",
+                "Fine.Paid",
+                "Fine.Overdue",
+                "Loan.Returned",
+                "Loan.Overdue"
+            ],
+
+            ["reservation.events"] =
+            [
+                "reservation.ready",
+                "reservation.created",
+                "reservation.cancelled"
+            ]
+        };
+
+        foreach (var subscription in subscriptions)
+        {
+            var exchange = subscription.Key;
 
             await _channel.ExchangeDeclareAsync(
-                exchange,
-                ExchangeType.Topic,
+                exchange: exchange,
+                type: ExchangeType.Topic,
                 durable: true,
                 cancellationToken: stoppingToken);
 
-            await _channel.QueueDeclareAsync(
-                queue,
-                durable: true,
-                exclusive: false,
-                autoDelete: false,
-                cancellationToken: stoppingToken);
-
-            foreach (var routingKey in _routingKeys)
+            foreach (var routingKey in subscription.Value)
             {
                 await _channel.QueueBindAsync(
-                    queue,
+                    queue: QueueName,
+                    exchange: exchange,
+                    routingKey: routingKey,
+                    cancellationToken: stoppingToken);
+
+                _logger.LogInformation(
+                    "Bound {Queue} to {Exchange} with {RoutingKey}",
+                    QueueName,
                     exchange,
+                    routingKey);
+            }
+        }
+
+        // Process one event at a time.
+        await _channel.BasicQosAsync(
+            prefetchSize: 0,
+            prefetchCount: 1,
+            global: false,
+            cancellationToken: stoppingToken);
+
+        var consumer = new AsyncEventingBasicConsumer(_channel);
+
+        consumer.ReceivedAsync += async (_, ea) =>
+        {
+            var message = Encoding.UTF8.GetString(
+                ea.Body.ToArray());
+
+            var routingKey = ea.RoutingKey;
+
+            try
+            {
+                await using var scope =
+                    _scopeFactory.CreateAsyncScope();
+
+                var notificationService =
+                    scope.ServiceProvider.GetRequiredService<
+                        INotificationService>();
+
+                await notificationService.HandleAsync(
                     routingKey,
+                    message,
+                    stoppingToken);
+
+                // Acknowledge only after successful handling.
+                await _channel.BasicAckAsync(
+                    ea.DeliveryTag,
+                    multiple: false,
+                    cancellationToken: stoppingToken);
+
+                _logger.LogInformation(
+                    "Processed notification event {RoutingKey}",
+                    routingKey);
+            }
+            catch (OperationCanceledException)
+                when (stoppingToken.IsCancellationRequested)
+            {
+                // On shutdown, unacknowledged messages
+                // can be redelivered after reconnection.
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to process {RoutingKey}. Moving to DLQ.",
+                    routingKey);
+
+                // Do not endlessly requeue a failed email.
+                // Retain the failed message for inspection.
+                await _channel.BasicRejectAsync(
+                    ea.DeliveryTag,
+                    requeue: false,
                     cancellationToken: stoppingToken);
             }
+        };
 
-            // Process one message at a time.
-            await _channel.BasicQosAsync(
-                0, 1, false,
-                cancellationToken: stoppingToken);
+        await _channel.BasicConsumeAsync(
+            queue: QueueName,
+            autoAck: false,
+            consumer: consumer,
+            cancellationToken: stoppingToken);
 
-            var consumer = new AsyncEventingBasicConsumer(_channel);
+        _logger.LogInformation(
+            "Notification is listening to UserService, Loan and Reservation.");
 
-            consumer.ReceivedAsync += async (_, ea) =>
-            {
-                // Copy the message before the callback returns.
-                var body = ea.Body.ToArray();
-                var message = Encoding.UTF8.GetString(body);
-                var routingKey = ea.RoutingKey;
-
-                try
-                {
-                    _logger.LogInformation(
-                        "Received event: {RoutingKey}",
-                        routingKey);
-
-                    await using var scope = _scopeFactory.CreateAsyncScope();
-
-                    var notificationService = scope.ServiceProvider
-                        .GetRequiredService<INotificationService>();
-
-                    await notificationService.HandleAsync(
-                        routingKey,
-                        message,
-                        stoppingToken);
-
-                    await _channel.BasicAckAsync(
-                        ea.DeliveryTag,
-                        multiple: false,
-                        cancellationToken: stoppingToken);
-
-                    _logger.LogInformation(
-                        "Successfully processed event: {RoutingKey}",
-                        routingKey);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(
-                        ex,
-                        "Failed to process event: {RoutingKey}",
-                        routingKey);
-
-                    // Requeue the message for another attempt.
-                    await _channel.BasicNackAsync(
-                        ea.DeliveryTag,
-                        multiple: false,
-                        requeue: true,
-                        cancellationToken: stoppingToken);
-                }
-            };
-
-            await _channel.BasicConsumeAsync(
-                queue: queue,
-                autoAck: false,
-                consumer: consumer,
-                cancellationToken: stoppingToken);
-
-            _logger.LogInformation(
-                "Notification Service is listening to RabbitMQ.");
-
-            // Keep the worker alive while the consumer is active.
+        try
+        {
             await Task.Delay(
                 Timeout.Infinite,
                 stoppingToken);
         }
-
-        public override async Task StopAsync(
-            CancellationToken cancellationToken)
+        catch (OperationCanceledException)
+            when (stoppingToken.IsCancellationRequested)
         {
-            if (_channel != null)
-            {
-                await _channel.DisposeAsync();
-            }
-
-            if (_connection != null)
-            {
-                await _connection.DisposeAsync();
-            }
-
-            await base.StopAsync(cancellationToken);
+            // Normal shutdown.
         }
+    }
+
+    public override async Task StopAsync(
+        CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+
+        if (_channel is not null)
+            await _channel.DisposeAsync();
+
+        if (_connection is not null)
+            await _connection.DisposeAsync();
     }
 }

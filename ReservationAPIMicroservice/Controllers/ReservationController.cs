@@ -115,6 +115,7 @@ public class ReservationsController : ControllerBase
         await _context.SaveChangesAsync();
 
         // Publish the creation event.
+
         await _publisher.PublishAsync(
             "reservation.created",
             new ReservationCreatedEvent(
@@ -123,7 +124,10 @@ public class ReservationsController : ControllerBase
                 reservation.Item,
                 reservation.QueueNumber,
                 reservation.ReservationTime,
-                DateTime.UtcNow));
+                DateTime.UtcNow,
+                item.Name
+            ));
+
 
         // Construct the response DTO.
         var response = new ReservationResponseDto
@@ -158,6 +162,20 @@ public class ReservationsController : ControllerBase
         var itemId = reservation.Item;
         var cancelledQueueNumber = reservation.QueueNumber;
 
+        // Get item name from Reservation's own
+        // Catalog item projection.
+        var itemName = await _context.Items
+            .AsNoTracking()
+            .Where(i => i.Id == itemId)
+            .Select(i => i.Name)
+            .SingleOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(itemName))
+        {
+            return Problem(
+                "Could not find the item name for this reservation.");
+        }
+
         // Find reservations behind the cancelled reservation.
         var reservationsBehind = await _context.Reservations
             .Where(r =>
@@ -191,13 +209,15 @@ public class ReservationsController : ControllerBase
 
         // Publish the cancellation event.
         await _publisher.PublishAsync(
-            "reservation.cancelled",
-            new ReservationCancelledEvent(
-                reservationId,
-                userId,
-                itemId,
-                cancelledQueueNumber,
-                DateTime.UtcNow));
+           "reservation.cancelled",
+           new ReservationCancelledEvent(
+               reservationId,
+               userId,
+               itemId,
+               cancelledQueueNumber,
+               DateTime.UtcNow,
+               itemName
+           ));
 
         // Publish ready events for reservations now at queue number 0.
         foreach (var confirmedReservation in newlyConfirmedReservations)
@@ -208,7 +228,9 @@ public class ReservationsController : ControllerBase
                     confirmedReservation.Id,
                     confirmedReservation.UserId,
                     confirmedReservation.Item,
-                    DateTime.UtcNow));
+                    DateTime.UtcNow,
+                    itemName
+                ));
         }
 
         return NoContent();

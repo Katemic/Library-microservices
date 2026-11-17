@@ -1,31 +1,29 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿
+namespace Notification.Contracts;
 
-namespace Notification.Contracts
-{
-    public record ReservationReady(
-    int Id,
+public record ReservationReady(
+    int ReservationId,
     int UserId,
-    string ItemName,
-    string Status
+    int ItemId,
+    DateTime OccurredAtUtc,
+    string? ItemName
 );
 
-    public record ReservationCreated(
-        int Id,
-        int UserId,
-        string ItemName,
-        DateTime ReservationTime,
-        string Status,
-        int QueueNumber
-    );
+public record ReservationCreated(
+    int ReservationId,
+    int UserId,
+    int ItemId,
+    int QueueNumber,
+    DateTime ReservationTime,
+    DateTime OccurredAtUtc,
+    string? ItemName
+);
 
-    public record ReservationCancelled(
-        int Id,
-        int UserId,
-        string ItemName,
-        string Status
-    );
-}
+public record ReservationCancelled(
+    int ReservationId,
+    int UserId,
+    int ItemId,
+    int QueueNumber,
+    DateTime CancelledAt,
+    string? ItemName
+);

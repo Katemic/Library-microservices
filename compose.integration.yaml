@@ -517,6 +517,108 @@ services:
 
     restart: "no"
 
+    
+  # =====================================
+  # NOTIFICATION MYSQL DATABASE
+  # =====================================
+  notification-mysql:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${NOTIFICATION_ROOT_PASSWORD}
+      MYSQL_DATABASE: notificationdb
+      MYSQL_USER: notification_user
+      MYSQL_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3311:3306"
+
+    volumes:
+      - notification_mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+    restart: unless-stopped
+
+
+  # =====================================
+  # NOTIFICATION FLYWAY
+  # =====================================
+  notification-flyway:
+    image: flyway/flyway:13.7.0
+
+    command: migrate
+
+    environment:
+      FLYWAY_URL: "jdbc:mysql://notification-mysql:3306/notificationdb?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: notification_user
+      FLYWAY_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+    volumes:
+      - ./Notification/Database/Migrations:/flyway/sql:ro
+
+    depends_on:
+      notification-mysql:
+        condition: service_healthy
+
+    restart: "no"
+
+
+    
+  # =====================================
+  # NOTIFICATION WORKER
+  # =====================================
+  notification-worker:
+    build:
+      context: ./Notification
+      dockerfile: Dockerfile
+
+    environment:
+      DOTNET_ENVIRONMENT: Development
+
+      # MySQL
+      ConnectionStrings__MySql: "Server=notification-mysql;Port=3306;Database=notificationdb;User=notification_user;Password=${NOTIFICATION_DB_PASSWORD}"
+
+      # Shared RabbitMQ
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+      # Brevo
+      Brevo__ApiKey: ${BREVO_API_KEY}
+      Brevo__SenderEmail: ${BREVO_SENDER_EMAIL}
+      Brevo__SenderName: ${BREVO_SENDER_NAME:-Library Notifications}
+
+      # Safety: no real emails during integration tests
+      Notification__DryRun: "false"
+
+    depends_on:
+      notification-flyway:
+        condition: service_completed_successfully
+
+      rabbitmq:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+
 
     
 
@@ -529,3 +631,4 @@ volumes:
   user_mysql_data:
   keycloak_data:
   recommendation_neo4j_data:
+  notification_mysql_data:

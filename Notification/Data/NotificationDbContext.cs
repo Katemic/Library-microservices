@@ -1,31 +1,54 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿
+using Microsoft.EntityFrameworkCore;
 using Notification.Model;
 
-namespace Notification.Data
+namespace Notification.Data;
+
+public class NotificationDbContext : DbContext
 {
-    public class NotificationDbContext : DbContext
+    public NotificationDbContext(
+        DbContextOptions<NotificationDbContext> options)
+        : base(options)
     {
-        public NotificationDbContext(
-            DbContextOptions<NotificationDbContext> options)
-            : base(options)
+    }
+
+    public DbSet<User> Users => Set<User>();
+
+    public DbSet<ProcessedNotification> ProcessedNotifications
+        => Set<ProcessedNotification>();
+
+    protected override void OnModelCreating(
+        ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<User>(entity =>
         {
-        }
+            entity.ToTable("Users");
 
-        public DbSet<User> Users => Set<User>();
+            entity.HasKey(x => x.Id);
 
-        protected override void OnModelCreating(
-            ModelBuilder modelBuilder)
+            entity.Property(x => x.Id)
+                .ValueGeneratedNever();
+
+            entity.Property(x => x.Email)
+                .HasMaxLength(255)
+                .IsRequired();
+
+            entity.Property(x => x.UserVersion)
+                .HasDefaultValue(0L);
+        });
+
+        modelBuilder.Entity<ProcessedNotification>(entity =>
         {
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.ToTable("Users");
+            entity.ToTable("ProcessedNotifications");
 
-                entity.HasKey(u => u.Id);
+            entity.HasKey(x => x.EventKey);
 
-                entity.Property(u => u.Email)
-                    .HasMaxLength(255)
-                    .IsRequired();
-            });
-        }
+            entity.Property(x => x.EventKey)
+                .HasMaxLength(160);
+
+            entity.Property(x => x.RecipientEmail)
+                .HasMaxLength(255)
+                .IsRequired();
+        });
     }
 }

@@ -1,290 +1,418 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿
+using Microsoft.EntityFrameworkCore;
 using Notification.Contracts;
 using Notification.Data;
 using Notification.Model;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Net;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
-namespace Notification.Services
+namespace Notification.Services;
+
+internal class NotificationService : INotificationService
 {
-    internal class NotificationService : INotificationService
-    {
-        private readonly BrevoEmailService _brevo;
-        private readonly NotificationDbContext _db;
+    private readonly BrevoEmailService _brevo;
+    private readonly NotificationDbContext _db;
+    private readonly ILogger<NotificationService> _logger;
+    private readonly bool _dryRun;
 
-        private readonly JsonSerializerOptions _jsonOptions = new()
+    private static readonly JsonSerializerOptions JsonOptions =
+        new()
         {
             PropertyNameCaseInsensitive = true
         };
 
-        public NotificationService(
-            BrevoEmailService brevo,
-            NotificationDbContext db)
-        {
-            _brevo = brevo;
-            _db = db;
-        }
+    public NotificationService(
+        BrevoEmailService brevo,
+        NotificationDbContext db,
+        IConfiguration configuration,
+        ILogger<NotificationService> logger)
+    {
+        _brevo = brevo;
+        _db = db;
+        _logger = logger;
 
-        public async Task HandleAsync(
-            string routingKey,
-            string message,
-            CancellationToken cancellationToken = default)
+        _dryRun = configuration.GetValue<bool>(
+            "Notification:DryRun", true);
+    }
+
+    public async Task HandleAsync(
+        string routingKey,
+        string message,
+        CancellationToken ct = default)
+    {
+        switch (routingKey)
         {
-            switch (routingKey)
-            {
-                // USER EVENTS
-                case "User.Created":
+            // ======================================
+            // USER EVENTS
+            // ======================================
+
+            case "user.created":
+            case "user.email.updated":
+                {
+                    var evt = Deserialize<UserEventEnvelope>(message);
+
+                    if (evt.EventId == Guid.Empty ||
+                        evt.EventType != routingKey ||
+                        evt.SchemaVersion != 1 ||
+                        evt.Data == null ||
+                        evt.Data.UserId <= 0 ||
+                        evt.Data.UserVersion <= 0 ||
+                        string.IsNullOrWhiteSpace(evt.Data.Email))
                     {
-                        var e = Deserialize<UserCreated>(message);
+                        throw new JsonException(
+                            "Invalid UserService event");
+                    }
 
-                        var userExists = await _db.Users
-                            .AnyAsync(
-                                u => u.Id == e.Id,
-                                cancellationToken);
+                    var user = await _db.Users
+                        .FirstOrDefaultAsync(
+                            u => u.Id == evt.Data.UserId, ct);
 
-                        if (userExists)
+                    if (user == null)
+                    {
+                        // Email updates may arrive before
+                        // user.created. Create the projection
+                        // from the latest event.
+                        user = new User
                         {
-                            break;
-                        }
-
-                        var user = new User
-                        {
-                            Id = e.Id,
-                            Email = e.Email
+                            Id = evt.Data.UserId,
+                            Email = evt.Data.Email,
+                            UserVersion = evt.Data.UserVersion
                         };
 
                         _db.Users.Add(user);
-
-                        await _db.SaveChangesAsync(cancellationToken);
-                        break;
                     }
-                case "User.UpdateEmail":
+                    else if (evt.Data.UserVersion > user.UserVersion)
                     {
-                        var e = Deserialize<UserUpdateEmail>(message);
-
-                        var user = await _db.Users
-                            .FirstOrDefaultAsync(
-                                u => u.Id == e.Id,
-                                cancellationToken);
-
-                        if (user == null)
-                        {
-                            // User does not exist. Do not create one.
-                            break;
-                        }
-
-                        user.Email = e.Email;
-
-                        await _db.SaveChangesAsync(cancellationToken);
-                        break;
-                    }
-                // FINE EVENTS
-                case "Fine.Created":
-                    {
-                        var e = Deserialize<FineCreated>(message);
-                        var email = await GetUserEmailAsync(
-                            e.LoanerId, cancellationToken);
-
-                        await Send(
-                            email,
-                            "New fine registered",
-                            $"""
-                        <h2>New fine registered</h2>
-                        <p>A fine has been registered for
-                        <b>{Encode(e.ItemName)}</b>.</p>
-                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                        """,
-                            cancellationToken);
-                        break;
+                        // Ignore older events.
+                        user.Email = evt.Data.Email;
+                        user.UserVersion = evt.Data.UserVersion;
                     }
 
-                case "Fine.Paid":
-                    {
-                        var e = Deserialize<FinePaid>(message);
-                        var email = await GetUserEmailAsync(
-                            e.LoanerId, cancellationToken);
+                    await _db.SaveChangesAsync(ct);
 
-                        await Send(
-                            email,
-                            "Fine payment confirmed",
-                            $"""
-                        <h2>Payment confirmed</h2>
-                        <p>Your fine for <b>{Encode(e.ItemName)}</b> has been paid.</p>
-                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                        <p>Payment date: {e.PaidDate:dd-MM-yyyy}</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+                    _logger.LogInformation(
+                        "Synchronized user {UserId}, version {Version}",
+                        evt.Data.UserId,
+                        evt.Data.UserVersion);
 
-                case "Fine.Overdue":
-                    {
-                        var e = Deserialize<FineOverdue>(message);
-                        var email = await GetUserEmailAsync(
-                            e.LoanerId, cancellationToken);
+                    break;
+                }
 
-                        await Send(
-                            email,
-                            "Your fine is overdue",
-                            $"""
-                        <h2>Fine overdue</h2>
-                        <p>Your fine for <b>{Encode(e.ItemName)}</b> is overdue.</p>
-                        <p>Amount: {e.Amount.ToString("C", CultureInfo.GetCultureInfo("en-US"))}</p>
-                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+            // ======================================
+            // FINE CREATED
+            // ======================================
 
-                // LOAN EVENTS
+            case "Fine.Created":
+                {
+                    var evt = Deserialize<FineCreated>(message);
+                    var email = await GetUserEmailAsync(evt.LoanerId, ct);
 
-                case "Loan.Returned":
-                    {
-                        var e = Deserialize<LoanReturned>(message);
-                        var email = await GetUserEmailAsync(
-                            e.LoanerId, cancellationToken);
+                    await SendOnceAsync(
+                        $"Fine.Created:{evt.Id}",
+                        email,
+                        "New fine registered",
+                        $"""
+                    <h2>New fine registered</h2>
+                    <p>A fine has been registered for
+                    <b>{Encode(evt.ItemName)}</b>.</p>
+                    <p>Amount: {Amount(evt.Amount)}</p>
+                    <p>Due date: {evt.DueDate:dd-MM-yyyy}</p>
+                    """,
+                        ct);
 
-                        await Send(
-                            email,
-                            "Item successfully returned",
-                            $"""
-                        <h2>Return confirmed</h2>
-                        <p>You successfully returned <b>{Encode(e.ItemName)}</b>.</p>
-                        <p>Return date: {e.ReturnDate:dd-MM-yyyy}</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+                    break;
+                }
 
-                case "Loan.Overdue":
-                    {
-                        var e = Deserialize<LoanOverdue>(message);
-                        var email = await GetUserEmailAsync(
-                            e.LoanerId, cancellationToken);
+            // ======================================
+            // FINE PAID
+            // ======================================
 
-                        await Send(
-                            email,
-                            "Your loan is overdue",
-                            $"""
-                        <h2>Loan overdue</h2>
-                        <p>Your loan for <b>{Encode(e.ItemName)}</b> is overdue.</p>
-                        <p>Due date: {e.DueDate:dd-MM-yyyy}</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+            case "Fine.Paid":
+                {
+                    var evt = Deserialize<FinePaid>(message);
+                    var email = await GetUserEmailAsync(evt.LoanerId, ct);
 
-                // RESERVATION EVENTS
+                    await SendOnceAsync(
+                        $"Fine.Paid:{evt.Id}",
+                        email,
+                        "Fine payment confirmed",
+                        $"""
+                    <h2>Payment confirmed</h2>
+                    <p>Your fine for
+                    <b>{Encode(evt.ItemName)}</b> has been paid.</p>
+                    <p>Amount: {Amount(evt.Amount)}</p>
+                    <p>Payment date: {evt.PaidDate:dd-MM-yyyy}</p>
+                    """,
+                        ct);
 
-                case "Reservation.Ready":
-                    {
-                        var e = Deserialize<ReservationReady>(message);
-                        var email = await GetUserEmailAsync(
-                            e.UserId, cancellationToken);
+                    break;
+                }
 
-                        await Send(
-                            email,
-                            "Your reservation is ready",
-                            $"""
-                        <h2>Your reservation is ready!</h2>
-                        <p><b>{Encode(e.ItemName)}</b> is now ready for pickup.</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+            // ======================================
+            // FINE OVERDUE
+            // ======================================
 
-                case "Reservation.Created":
-                    {
-                        var e = Deserialize<ReservationCreated>(message);
-                        var email = await GetUserEmailAsync(
-                            e.UserId, cancellationToken);
+            case "Fine.Overdue":
+                {
+                    var evt = Deserialize<FineOverdue>(message);
+                    var email = await GetUserEmailAsync(evt.LoanerId, ct);
 
-                        await Send(
-                            email,
-                            "Reservation created",
-                            $"""
-                        <h2>Reservation confirmed</h2>
-                        <p>Your reservation for <b>{Encode(e.ItemName)}</b> was created.</p>
-                        <p>Queue number: {e.QueueNumber}</p>
-                        <p>Reservation time: {e.ReservationTime:dd-MM-yyyy HH:mm}</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+                    await SendOnceAsync(
+                        $"Fine.Overdue:{evt.Id}",
+                        email,
+                        "Your fine is overdue",
+                        $"""
+                    <h2>Fine overdue</h2>
+                    <p>Your fine for
+                    <b>{Encode(evt.ItemName)}</b> is overdue.</p>
+                    <p>Amount: {Amount(evt.Amount)}</p>
+                    <p>Due date: {evt.DueDate:dd-MM-yyyy}</p>
+                    """,
+                        ct);
 
-                case "Reservation.Cancelled":
-                    {
-                        var e = Deserialize<ReservationCancelled>(message);
-                        var email = await GetUserEmailAsync(
-                            e.UserId, cancellationToken);
+                    break;
+                }
 
-                        await Send(
-                            email,
-                            "Reservation cancelled",
-                            $"""
-                        <h2>Reservation cancelled</h2>
-                        <p>Your reservation for <b>{Encode(e.ItemName)}</b> has been cancelled.</p>
-                        """,
-                            cancellationToken);
-                        break;
-                    }
+            // ======================================
+            // LOAN RETURNED
+            // ======================================
 
-                default:
-                    throw new NotSupportedException(
-                        $"Unknown event type: {routingKey}");
-            }
-        }
+            case "Loan.Returned":
+                {
+                    var evt = Deserialize<LoanReturned>(message);
+                    var email = await GetUserEmailAsync(evt.LoanerId, ct);
 
-        private async Task<string> GetUserEmailAsync(
-            int userId,
-            CancellationToken cancellationToken)
-        {
-            var user = await _db.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    u => u.Id == userId,
-                    cancellationToken);
+                    await SendOnceAsync(
+                        $"Loan.Returned:{evt.Id}",
+                        email,
+                        "Item successfully returned",
+                        $"""
+                    <h2>Return confirmed</h2>
+                    <p>You successfully returned
+                    <b>{Encode(evt.ItemName)}</b>.</p>
+                    <p>Return date: {evt.ReturnDate:dd-MM-yyyy}</p>
+                    """,
+                        ct);
 
-            if (user == null || string.IsNullOrWhiteSpace(user.Email))
-            {
-                throw new InvalidOperationException(
-                    $"No email address found for user ID {userId}.");
-            }
+                    break;
+                }
 
-            return user.Email;
-        }
+            // ======================================
+            // LOAN OVERDUE
+            // ======================================
 
-        private T Deserialize<T>(string message)
-        {
-            return JsonSerializer.Deserialize<T>(
-                message, _jsonOptions)
-                ?? throw new JsonException(
-                    $"Could not deserialize message as {typeof(T).Name}");
-        }
+            case "Loan.Overdue":
+                {
+                    var evt = Deserialize<LoanOverdue>(message);
+                    var email = await GetUserEmailAsync(evt.LoanerId, ct);
 
-        private async Task Send(
-            string email,
-            string subject,
-            string html,
-            CancellationToken cancellationToken)
-        {
-            await _brevo.SendEmailAsync(
-                email,
-                subject,
-                html,
-                cancellationToken);
-        }
+                    await SendOnceAsync(
+                        $"Loan.Overdue:{evt.Id}",
+                        email,
+                        "Your loan is overdue",
+                        $"""
+                    <h2>Loan overdue</h2>
+                    <p>Your loan for
+                    <b>{Encode(evt.ItemName)}</b> is overdue.</p>
+                    <p>Due date: {evt.DueDate:dd-MM-yyyy}</p>
+                    """,
+                        ct);
 
-        private static string Encode(string value)
-        {
-            return WebUtility.HtmlEncode(value);
+                    break;
+                }
+
+            // ======================================
+            // RESERVATION CREATED
+            // ======================================
+
+            case "reservation.created":
+                {
+                    var evt = Deserialize<ReservationCreated>(message);
+                    var email = await GetUserEmailAsync(evt.UserId, ct);
+
+                    await SendOnceAsync(
+                        $"reservation.created:{evt.ReservationId}",
+                        email,
+                        "Reservation created",
+                        $"""
+                    <h2>Reservation confirmed</h2>
+                    <p>Your reservation for
+                    <b>{ItemLabel(evt.ItemName, evt.ItemId)}</b>
+                    was created.</p>
+                    <p>Queue number: {evt.QueueNumber}</p>
+                    <p>Reservation time:
+                    {evt.ReservationTime:dd-MM-yyyy HH:mm}</p>
+                    """,
+                        ct);
+
+                    break;
+                }
+
+            // ======================================
+            // RESERVATION READY
+            // ======================================
+
+            case "reservation.ready":
+                {
+                    var evt = Deserialize<ReservationReady>(message);
+                    var email = await GetUserEmailAsync(evt.UserId, ct);
+
+                    await SendOnceAsync(
+                        $"reservation.ready:{evt.ReservationId}",
+                        email,
+                        "Your reservation is ready",
+                        $"""
+                    <h2>Your reservation is ready!</h2>
+                    <p><b>{ItemLabel(evt.ItemName, evt.ItemId)}</b>
+                    is now ready for pickup.</p>
+                    """,
+                        ct);
+
+                    break;
+                }
+
+            // ======================================
+            // RESERVATION CANCELLED
+            // ======================================
+
+            case "reservation.cancelled":
+                {
+                    var evt = Deserialize<ReservationCancelled>(message);
+                    var email = await GetUserEmailAsync(evt.UserId, ct);
+
+                    await SendOnceAsync(
+                        $"reservation.cancelled:{evt.ReservationId}",
+                        email,
+                        "Reservation cancelled",
+                        $"""
+                    <h2>Reservation cancelled</h2>
+                    <p>Your reservation for
+                    <b>{ItemLabel(evt.ItemName, evt.ItemId)}</b>
+                    has been cancelled.</p>
+                    """,
+                        ct);
+
+                    break;
+                }
+
+            default:
+                throw new NotSupportedException(
+                    $"Unknown event: {routingKey}");
         }
     }
+
+    // ======================================
+    // FIND RECIPIENT EMAIL
+    // ======================================
+
+    private async Task<string> GetUserEmailAsync(
+        int userId,
+        CancellationToken ct)
+    {
+        var user = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user == null ||
+            string.IsNullOrWhiteSpace(user.Email))
+        {
+            throw new InvalidOperationException(
+                $"No email projection exists for user {userId}.");
+        }
+
+        return user.Email;
+    }
+
+    // ======================================
+    // SEND EMAIL ONCE PER EVENT KEY
+    // ======================================
+
+    private async Task SendOnceAsync(
+        string eventKey,
+        string email,
+        string subject,
+        string html,
+        CancellationToken ct)
+    {
+        var alreadyProcessed =
+            await _db.ProcessedNotifications
+                .AnyAsync(x => x.EventKey == eventKey, ct);
+
+        if (alreadyProcessed)
+        {
+            _logger.LogInformation(
+                "Skipping already processed event {EventKey}",
+                eventKey);
+
+            return;
+        }
+
+        if (_dryRun)
+        {
+            _logger.LogInformation(
+                "DRY RUN EMAIL: To={Email}, Subject={Subject}, Event={EventKey}",
+                email, subject, eventKey);
+        }
+        else
+        {
+            // Actual third-party email request.
+            await _brevo.SendEmailAsync(
+                email, subject, html, ct);
+
+            _logger.LogInformation(
+                "Brevo accepted email for event {EventKey}",
+                eventKey);
+        }
+
+        // Only store success after the operation above.
+        _db.ProcessedNotifications.Add(
+            new ProcessedNotification
+            {
+                EventKey = eventKey,
+                RecipientEmail = email,
+                ProcessedAtUtc = DateTime.UtcNow
+            });
+
+        await _db.SaveChangesAsync(ct);
+    }
+
+    // ======================================
+    // HELPERS
+    // ======================================
+
+    private static T Deserialize<T>(string message)
+    {
+        return JsonSerializer.Deserialize<T>(
+            message, JsonOptions)
+            ?? throw new JsonException(
+                $"Cannot deserialize {typeof(T).Name}");
+    }
+
+    private static string Encode(string value)
+    {
+        return WebUtility.HtmlEncode(value);
+    }
+
+    private static string Amount(decimal value)
+    {
+        return value.ToString(
+            "0.00", CultureInfo.InvariantCulture);
+    }
+
+
+
+    private static string ItemLabel(
+        string? itemName,
+        int itemId)
+    {
+        // Fallback for events published before
+        // ItemName was added to the contract.
+        var label = string.IsNullOrWhiteSpace(itemName)
+            ? $"item #{itemId}"
+            : itemName;
+
+        return WebUtility.HtmlEncode(label);
+    }
+
 }
