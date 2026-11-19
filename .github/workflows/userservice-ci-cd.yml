@@ -1,0 +1,47 @@
+name: UserService CI/CD
+
+on:
+  push:
+    branches:
+      - user-profile-update
+      - dev-integration-v1
+
+  pull_request:
+    branches:
+      - dev-integration-v1
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      # Checkout source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install .NET SDK
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Restore dependencies
+      - name: Restore UserService
+        run: dotnet restore UserService/UserService.csproj
+
+      # Build UserService
+      - name: Build UserService
+        run: dotnet build UserService/UserService.csproj --configuration Release --no-restore
+
+      # Run unit tests
+      - name: Run unit tests
+        run: |
+          TEST_PROJECT=$(find . -name 'UserService.UnitTests.csproj' -o -name 'User.UnitTests.csproj')
+          dotnet test "$TEST_PROJECT" --configuration Release --verbosity normal
+
+      # Build Docker image
+      - name: Build Docker image
+        run: docker build -t userservice:${{ github.sha }} ./UserService
