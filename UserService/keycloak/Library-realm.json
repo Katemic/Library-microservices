@@ -637,7 +637,7 @@
       "enabled": true,
       "serviceAccountClientId": "userservice-backend",
       "clientRoles": {
-        "realm-management": [ "view-users" ]
+        "realm-management": [ "view-users", "manage-users" ]
       }
     }
   ],

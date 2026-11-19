@@ -1,5 +1,4 @@
-﻿
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using UserService.Data;
 using UserService.Models;
 using UserService.Messaging;
@@ -11,10 +10,15 @@ namespace UserService.Services
     public class UserService
     {
         private readonly UserDbContext _context;
+        private readonly KeycloakUserClient _keycloakUserClient;
 
-        public UserService(UserDbContext context)
+        // Inject the database context and Keycloak client.
+        public UserService(
+            UserDbContext context,
+            KeycloakUserClient keycloakUserClient)
         {
             _context = context;
+            _keycloakUserClient = keycloakUserClient;
         }
 
         // ==========================================
@@ -309,6 +313,20 @@ namespace UserService.Services
                 normalizedEmail,
                 StringComparison.Ordinal);
 
+            // Synchronize profile information with Keycloak
+            // before updating the local database.
+            // Profiles without a linked Keycloak account
+            // can only be updated locally.
+            if (!string.IsNullOrWhiteSpace(user.KeycloakSubject))
+            {
+                await _keycloakUserClient.UpdateUserAsync(
+                    user.KeycloakSubject,
+                    firstName,
+                    lastName,
+                    normalizedEmail,
+                    tlf);
+            }
+
             await using var transaction =
                 await _context.Database.BeginTransactionAsync();
 
@@ -345,6 +363,47 @@ namespace UserService.Services
             return user;
         }
 
+        // ==========================================
+        // UPDATE CURRENT USER'S PROFILE
+        // ==========================================
+
+        // Allows an authenticated user to update their
+        // own profile using the Keycloak subject.
+        //
+        // The subject must come from the validated JWT,
+        // never from the request body.
+
+        public async Task<User?> UpdateCurrentUserAsync(
+            string keycloakSubject,
+            string firstName,
+            string lastName,
+            string email,
+            string tlf)
+        {
+            if (string.IsNullOrWhiteSpace(keycloakSubject))
+            {
+                throw new ArgumentException(
+                    "Keycloak subject is required.");
+            }
+
+            // Find the profile belonging to the authenticated user.
+            var user =
+                await GetUserByKeycloakSubjectAsync(
+                    keycloakSubject);
+
+            // Only active users can update their profiles.
+            if (user == null || !user.IsActive)
+                return null;
+
+            // Reuse the existing update logic to synchronize
+            // Keycloak, MySQL and the transactional outbox.
+            return await UpdateUserAsync(
+                user.Id,
+                firstName,
+                lastName,
+                email,
+                tlf);
+        }
 
         // ==========================================
         // UPDATE CURRENT USER'S EMAIL
@@ -360,6 +419,9 @@ namespace UserService.Services
         // 2. Increment the user version.
         // 3. Add user.email.updated to the outbox.
         // 4. Commit the changes atomically.
+        //
+        // The MySQL update and outbox operation are atomic.
+        // Keycloak is updated separately before the transaction.
 
         public async Task<User?> UpdateEmailAsync(
             string keycloakSubject,
@@ -379,9 +441,6 @@ namespace UserService.Services
 
             var normalizedEmail = newEmail.Trim();
 
-            await using var transaction =
-                await _context.Database.BeginTransactionAsync();
-
             // Find the user linked to the JWT.
             var user = await _context.Users
                 .SingleOrDefaultAsync(
@@ -393,36 +452,16 @@ namespace UserService.Services
                 return null;
             }
 
-            // Do nothing when the email has not changed.
-            if (string.Equals(
-                user.Email,
+            // Reuse the existing update logic to synchronize
+            // the email in both Keycloak and MySQL.
+            // Keep the existing name and phone number unchanged.
+            return await UpdateUserAsync(
+                user.Id,
+                user.FirstName,
+                user.LastName,
                 normalizedEmail,
-                StringComparison.Ordinal))
-            {
-                return user;
-            }
-
-            // Update email in the local database.
-            user.Email = normalizedEmail;
-
-            // Increment the event version.
-            user.Version = checked(user.Version + 1);
-
-            // Create the RabbitMQ event in the outbox.
-            // The existing UserOutboxWorker will publish it.
-            EnqueueUserEvent(
-                user,
-                "user.email.updated");
-
-            // Save email and outbox message together.
-            await _context.SaveChangesAsync();
-
-            await transaction.CommitAsync();
-
-            return user;
+                user.TLF);
         }
-
-
 
         // ==========================================
         // DEACTIVATE USER
