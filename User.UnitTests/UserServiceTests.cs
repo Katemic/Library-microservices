@@ -302,6 +302,21 @@ namespace UserService.UnitTests
             Assert.AreEqual(previousVersion, result.Version);
         }
 
+
+        [TestMethod]
+        public void Pipeline_ShouldDetectFailingTest()
+        {
+            // Arrange
+            int expected = 1;
+
+            // Act
+            int actual = 2;
+
+            // Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+
         // Release resources after each test.
         [TestCleanup]
         public void Cleanup()
