@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Recommendation", "Recommend
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notification", "Notification\Notification.csproj", "{64E674A4-7A59-4242-B1C4-7096234B3D78}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Catalog.Tests", "Catalog.Tests\Catalog.Tests.csproj", "{5E08A5D9-9170-4BA7-A580-30FD698EFC37}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -53,6 +55,10 @@ Global
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5E08A5D9-9170-4BA7-A580-30FD698EFC37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5E08A5D9-9170-4BA7-A580-30FD698EFC37}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5E08A5D9-9170-4BA7-A580-30FD698EFC37}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5E08A5D9-9170-4BA7-A580-30FD698EFC37}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

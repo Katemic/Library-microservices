@@ -1,0 +1,22 @@
+﻿name: Catalog Unit Tests
+description: Build and test the Catalog microservice
+
+runs:
+  using: composite
+  steps:
+    - name: Set up .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      shell: bash
+      run: dotnet restore Catalog.Tests/Catalog.Tests.csproj
+
+    - name: Build tests
+      shell: bash
+      run: dotnet build Catalog.Tests/Catalog.Tests.csproj --configuration Release --no-restore
+
+    - name: Run MSTest
+      shell: bash
+      run: dotnet test Catalog.Tests/Catalog.Tests.csproj --configuration Release --no-build --no-restore --verbosity normal
