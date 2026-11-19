@@ -54,13 +54,21 @@ public class ReservationsController : ControllerBase
     public async Task<ActionResult<ReservationResponseDto>>
         CreateReservation(ReservationCreateDto dto)
     {
-        var reservation = await _reservationService.CreateReservationAsync(dto);
+        var result = await _reservationService.CreateReservationAsync(dto);
 
-        if (reservation == null)
+        if (!result.Success)
         {
-            return BadRequest("The specified item does not exist or has been deleted.");
+            if (result.ErrorMessage!.Contains("does not exist"))
+                return NotFound(result.ErrorMessage);
+
+            if (result.ErrorMessage!.Contains("already have a reservation"))
+                return BadRequest(result.ErrorMessage);
         }
-        return Ok(reservation);
+
+        return CreatedAtAction(
+            nameof(GetReservation),
+            new { id = result.Data!.Id },
+            result.Data);
     }
 
     // DELETE: api/reservations/5

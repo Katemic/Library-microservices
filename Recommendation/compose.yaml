@@ -1,0 +1,36 @@
+﻿services:
+  recommendation:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_HTTP_PORTS: 8080
+      Neo4j__Uri: bolt://neo4j:7687
+      Neo4j__Username: neo4j
+      Neo4j__Password: ${NEO4J_PASSWORD}
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: 5672
+      RabbitMQ__Username: ${RABBITMQ_USER}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD}
+      RabbitMQ__Queue: recommendation-queue
+      RabbitMQ__Exchange: recommendation.events
+    depends_on:
+      - neo4j
+      - rabbitmq
+
+  neo4j:
+    image: neo4j:5
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}

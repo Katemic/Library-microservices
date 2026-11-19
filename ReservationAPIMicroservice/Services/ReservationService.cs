@@ -13,11 +13,11 @@ namespace ReservationAPIMicroservice.Services
     {
         private readonly ReservationDbContext _context;
 
-        private readonly RabbitMqPublisher _publisher;
+        private readonly IRabbitMqPublisher _publisher;
 
         public ReservationService(
             ReservationDbContext context,
-            RabbitMqPublisher publisher)
+            IRabbitMqPublisher publisher)
         {
             _context = context;
             _publisher = publisher;
@@ -67,7 +67,7 @@ namespace ReservationAPIMicroservice.Services
         }
 
 
-        public async Task<ReservationResponseDto>?
+        public async Task<Result<ReservationResponseDto>?>
             CreateReservationAsync(ReservationCreateDto dto)
         {
             // Verify the item exists and hasn't been deleted.
@@ -78,8 +78,16 @@ namespace ReservationAPIMicroservice.Services
                 .FirstOrDefaultAsync();
 
             if (item == null)
-                return null;
-            
+                return Result<ReservationResponseDto>.Fail(
+                    "The requested item does not exist or has been deleted.");
+
+            // Check whether the user already has a reservation for this item.
+            var existingReservation = await _context.Reservations
+                .AnyAsync(r => r.UserId == dto.UserId && r.Item == dto.Item);
+
+            if (existingReservation)
+                return Result<ReservationResponseDto>.Fail(
+                    "You already have a reservation for this item.");
 
             // Find the highest queue number for this item's pending reservations.
             var lastQueueNumber = await _context.Reservations
@@ -111,7 +119,8 @@ namespace ReservationAPIMicroservice.Services
                     reservation.Item,
                     reservation.QueueNumber,
                     reservation.ReservationTime,
-                    DateTime.UtcNow));
+                    DateTime.UtcNow,
+                    reservation.ItemNavigation.Name));
 
             // Construct the response DTO.
             var response = new ReservationResponseDto
@@ -125,7 +134,7 @@ namespace ReservationAPIMicroservice.Services
                 ItemName = item.Name
             };
 
-            return response;
+            return Result<ReservationResponseDto>.Ok(response);
         }
 
         public async Task<Reservation> DeleteReservationAsync(int id)
@@ -180,7 +189,8 @@ namespace ReservationAPIMicroservice.Services
                     userId,
                     itemId,
                     cancelledQueueNumber,
-                    DateTime.UtcNow));
+                    DateTime.UtcNow,
+                    reservation.ItemNavigation.Name));
 
             // Publish ready events for reservations now at queue number 0.
             foreach (var confirmedReservation in newlyConfirmedReservations)
@@ -191,7 +201,8 @@ namespace ReservationAPIMicroservice.Services
                         confirmedReservation.Id,
                         confirmedReservation.UserId,
                         confirmedReservation.Item,
-                        DateTime.UtcNow));
+                        DateTime.UtcNow,
+                        confirmedReservation.ItemNavigation.Name));
             }
             //"itemNavigation": null
             return reservation;

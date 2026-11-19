@@ -1,0 +1,31 @@
+name: Reservation API CI
+
+on:
+  push:
+    paths:
+      - 'ReservationAPIMicroservice/**'
+      - 'ReservationAPIMicroserviceTests/**'
+      - '.github/workflows/reservation-api-ci.yml'
+
+  pull_request:
+    paths:
+      - 'ReservationAPIMicroservice/**'
+      - 'ReservationAPIMicroserviceTests/**'
+      - '.github/workflows/reservation-api-ci.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reservation-api-tests:
+    name: Reservation API Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Reservation API unit tests
+        uses: ./ReservationAPIMicroservice/.github/actions/unit-tests

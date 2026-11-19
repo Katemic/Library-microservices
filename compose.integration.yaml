@@ -229,9 +229,406 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
+    
+
+  # =====================================
+  # RESERVATION - MYSQL DATABASE
+  # =====================================
+  reservation-mysql:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RESERVATION_ROOT_PASSWORD}
+      MYSQL_DATABASE: ReservationDb
+      MYSQL_USER: reservationuser
+      MYSQL_PASSWORD: ${RESERVATION_DB_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3309:3306"
+
+    volumes:
+      - reservation_mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+
+  # =====================================
+  # RESERVATION - FLYWAY
+  # =====================================
+  reservation-flyway:
+    image: flyway/flyway:13.7.0
+    command: migrate
+
+    environment:
+      FLYWAY_URL: "jdbc:mysql://reservation-mysql:3306/ReservationDb?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: reservationuser
+      FLYWAY_PASSWORD: ${RESERVATION_DB_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+    volumes:
+      - ./ReservationAPIMicroservice/Database/Migrations:/flyway/sql:ro
+
+    depends_on:
+      reservation-mysql:
+        condition: service_healthy
+
+    restart: "no"
+
+
+  # =====================================
+  # RESERVATION API
+  # =====================================
+  reservation-api:
+    build:
+      context: ./ReservationAPIMicroservice
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:18083:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      ConnectionStrings__DefaultConnection: "Server=reservation-mysql;Port=3306;Database=ReservationDb;User ID=reservationuser;Password=${RESERVATION_DB_PASSWORD}"
+
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__User: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+    depends_on:
+      reservation-flyway:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+      # =====================================
+  # USER SERVICE - MYSQL DATABASE
+  # =====================================
+  user-mysql:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${USER_ROOT_PASSWORD}
+      MYSQL_DATABASE: userdb
+      MYSQL_USER: userapp
+      MYSQL_PASSWORD: ${USER_DB_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3310:3306"
+
+    volumes:
+      - user_mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+
+  # =====================================
+  # KEYCLOAK - IDENTITY PROVIDER
+  # =====================================
+  library-keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+
+    command:
+      - start-dev
+      - --hostname=http://localhost:8081
+      - --import-realm
+
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      KEYCLOAK_BACKEND_CLIENT_SECRET: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
+    ports:
+      - "127.0.0.1:8081:8080"
+
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./UserService/keycloak/Library-realm.json:/opt/keycloak/data/import/Library-realm.json:ro
+
+
+  # =====================================
+  # USER SERVICE API
+  # =====================================
+  user-api:
+    build:
+      context: ./UserService
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:18084:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      ConnectionStrings__DefaultConnection: "Server=user-mysql;Port=3306;Database=userdb;User=userapp;Password=${USER_DB_PASSWORD}"
+
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+      Keycloak__Authority: "http://localhost:8081/realms/Library"
+      Keycloak__Audience: "library-userservice"
+      Keycloak__InternalBaseUrl: "http://library-keycloak:8080"
+
+      Keycloak__BackendClientId: ${KEYCLOAK_BACKEND_CLIENT_ID}
+      Keycloak__BackendClientSecret: ${KEYCLOAK_BACKEND_CLIENT_SECRET}
+
+    depends_on:
+      user-mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      library-keycloak:
+        condition: service_started
+
+    restart: unless-stopped
+
+    
+  
+  # =====================================
+  # RECOMMENDATION - NEO4J DATABASE
+  # =====================================
+  recommendation-neo4j:
+    image: neo4j:5
+
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD}"
+
+    ports:
+      - "127.0.0.1:17474:7474"
+      - "127.0.0.1:17687:7687"
+
+    volumes:
+      - recommendation_neo4j_data:/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          cypher-shell
+          -a bolt://localhost:7687
+          -u neo4j
+          -p "$${NEO4J_AUTH#*/}"
+          "RETURN 1" > /dev/null 2>&1
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+    restart: unless-stopped
+
+    
+  # =====================================
+  # RECOMMENDATION API
+  # =====================================
+  recommendation-api:
+    build:
+      context: ./Recommendation
+      dockerfile: Dockerfile
+
+    ports:
+      - "127.0.0.1:18085:8080"
+
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+
+      Neo4j__Uri: "bolt://recommendation-neo4j:7687"
+      Neo4j__Username: neo4j
+      Neo4j__Password: ${NEO4J_PASSWORD}
+
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+    
+    depends_on:
+      recommendation-neo4j-schema:
+        condition: service_completed_successfully
+
+      rabbitmq:
+        condition: service_healthy
+
+
+    restart: unless-stopped
+
+    
+  # =====================================
+  # RECOMMENDATION - NEO4J SCHEMA SETUP
+  # =====================================
+  recommendation-neo4j-schema:
+    image: neo4j:5
+
+    entrypoint: ["/bin/sh", "-ec"]
+
+    command:
+      - >
+        exec cypher-shell
+        -a bolt://recommendation-neo4j:7687
+        -u neo4j
+        -p "$$NEO4J_PASSWORD"
+        -f /schema/schema.cypher
+
+    environment:
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+
+    volumes:
+      - ./Recommendation/Database/schema.cypher:/schema/schema.cypher:ro
+
+    depends_on:
+      recommendation-neo4j:
+        condition: service_healthy
+
+    restart: "no"
+
+    
+  # =====================================
+  # NOTIFICATION MYSQL DATABASE
+  # =====================================
+  notification-mysql:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${NOTIFICATION_ROOT_PASSWORD}
+      MYSQL_DATABASE: notificationdb
+      MYSQL_USER: notification_user
+      MYSQL_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+
+    ports:
+      - "127.0.0.1:3311:3306"
+
+    volumes:
+      - notification_mysql_data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          MYSQL_PWD="$$MYSQL_PASSWORD"
+          mysql --protocol=TCP
+          -h 127.0.0.1
+          -u "$$MYSQL_USER"
+          "$$MYSQL_DATABASE"
+          -e 'SELECT 1' > /dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+    restart: unless-stopped
+
+
+  # =====================================
+  # NOTIFICATION FLYWAY
+  # =====================================
+  notification-flyway:
+    image: flyway/flyway:13.7.0
+
+    command: migrate
+
+    environment:
+      FLYWAY_URL: "jdbc:mysql://notification-mysql:3306/notificationdb?allowPublicKeyRetrieval=true&useSSL=false"
+      FLYWAY_USER: notification_user
+      FLYWAY_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "60"
+      FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
+
+    volumes:
+      - ./Notification/Database/Migrations:/flyway/sql:ro
+
+    depends_on:
+      notification-mysql:
+        condition: service_healthy
+
+    restart: "no"
+
+
+    
+  # =====================================
+  # NOTIFICATION WORKER
+  # =====================================
+  notification-worker:
+    build:
+      context: ./Notification
+      dockerfile: Dockerfile
+
+    environment:
+      DOTNET_ENVIRONMENT: Development
+
+      # MySQL
+      ConnectionStrings__MySql: "Server=notification-mysql;Port=3306;Database=notificationdb;User=notification_user;Password=${NOTIFICATION_DB_PASSWORD}"
+
+      # Shared RabbitMQ
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__Username: ${RABBIT_USER}
+      RabbitMQ__Password: ${RABBIT_PASSWORD}
+
+      # Brevo
+      Brevo__ApiKey: ${BREVO_API_KEY}
+      Brevo__SenderEmail: ${BREVO_SENDER_EMAIL}
+      Brevo__SenderName: ${BREVO_SENDER_NAME:-Library Notifications}
+
+      # Safety: no real emails during integration tests
+      Notification__DryRun: "false"
+
+    depends_on:
+      notification-flyway:
+        condition: service_completed_successfully
+
+      rabbitmq:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+
+
+    
 
 volumes:
   rabbit_data:
   catalog_mysql_data:
   catalog_mongo_data:
   loan_mysql_data:
+  reservation_mysql_data:
+  user_mysql_data:
+  keycloak_data:
+  recommendation_neo4j_data:
+  notification_mysql_data:

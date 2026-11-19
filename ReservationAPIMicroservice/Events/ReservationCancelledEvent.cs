@@ -1,5 +1,4 @@
-﻿using ReservationAPIMicroservice.Models;
-
+﻿
 namespace ReservationAPIMicroservice.Events;
 
 public record ReservationCancelledEvent(
@@ -7,4 +6,6 @@ public record ReservationCancelledEvent(
     int UserId,
     int ItemId,
     int QueueNumber,
-    DateTime CancelledAt);
+    DateTime CancelledAt,
+    string ItemName
+);

@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 
 namespace ReservationAPIMicroservice.Services.RabbitMQ;
-public sealed class RabbitMqPublisher : IAsyncDisposable
+public sealed class RabbitMqPublisher : IRabbitMqPublisher, IAsyncDisposable
 {
     private const string ExchangeName = "reservation.events";
 
