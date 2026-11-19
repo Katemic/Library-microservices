@@ -37,11 +37,68 @@ jobs:
       - name: Build UserService
         run: dotnet build UserService/UserService.csproj --configuration Release --no-restore
 
-      # Run unit tests
+      # Run unit tests and generate test results
       - name: Run unit tests
         run: |
-          TEST_PROJECT=$(find . -name 'UserService.UnitTests.csproj' -o -name 'User.UnitTests.csproj')
-          dotnet test "$TEST_PROJECT" --configuration Release --verbosity normal
+          dotnet test User.UnitTests/UserService.UnitTests.csproj \
+            --configuration Release \
+            --logger "console;verbosity=detailed" \
+            --logger "trx;logfilename=results.trx" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults"
+
+      # Display test results in GitHub Actions Summary
+      - name: Generate test report
+        if: always()
+        run: |
+          python3 <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          path = "TestResults/results.trx"
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:
+              report.write("## UserService - Unit Test Report\n\n")
+
+              if not os.path.exists(path):
+                  report.write("No test results available.\n")
+                  raise SystemExit(0)
+
+              root = ET.parse(path).getroot()
+              ns = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
+
+              counters = root.find(".//t:Counters", ns)
+
+              report.write("| Total | Passed | Failed |\n")
+              report.write("|---|---|---|\n")
+              report.write(
+                  f"| {counters.get('total')} "
+                  f"| {counters.get('passed')} "
+                  f"| {counters.get('failed')} |\n\n"
+              )
+
+              report.write("| Test | Result | Duration |\n")
+              report.write("|---|---|---|\n")
+
+              for test in root.findall(".//t:UnitTestResult", ns):
+                  name = test.get("testName")
+                  outcome = test.get("outcome")
+                  duration = test.get("duration")
+
+                  icon = "✅" if outcome == "Passed" else "❌" if outcome == "Failed" else "⚪"
+
+                  report.write(
+                      f"| {name} | {icon} {outcome} | {duration} |\n"
+                  )
+          PY
+
+      # Save test results
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: UserService-TestResults
+          path: TestResults/
+          if-no-files-found: warn
 
       # Build Docker image
       - name: Build Docker image
