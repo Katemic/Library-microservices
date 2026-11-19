@@ -16,6 +16,7 @@ jobs:
 
     permissions:
       contents: read
+      packages: write
 
     steps:
       # Checkout source code
@@ -45,3 +46,22 @@ jobs:
       # Build Docker image
       - name: Build Docker image
         run: docker build -t userservice:${{ github.sha }} ./UserService
+
+      # Authenticate with GitHub Container Registry
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Publish Docker image
+      - name: Push Docker image
+        if: github.event_name == 'push'
+        run: |
+          IMAGE=ghcr.io/katemic/library-microservices/userservice
+
+          docker tag userservice:${{ github.sha }} $IMAGE:${{ github.sha }}
+          docker tag userservice:${{ github.sha }} $IMAGE:${{ github.ref_name }}
+
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:${{ github.ref_name }}
