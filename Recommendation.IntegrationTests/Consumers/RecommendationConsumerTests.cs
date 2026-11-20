@@ -65,7 +65,7 @@ public sealed class RecommendationConsumerTests
 
         _consumer.Dispose();
 
-        await _publisher.DisposeAsync();
+        await _publisher.DisposeAsync(); 
     }
 
     // =====================================
