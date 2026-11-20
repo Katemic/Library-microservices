@@ -4,13 +4,9 @@ name: Recommendation Integration Tests
 on:
   push:
     branches:
-      - main
-      - develop
       - recommendation-test
   pull_request:
     branches:
-      - main
-      - develop
       - recommendation-test
   workflow_dispatch:
 
