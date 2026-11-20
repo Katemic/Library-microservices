@@ -1,0 +1,79 @@
+
+name: Recommendation Integration Tests
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - recommendation-test
+  pull_request:
+    branches:
+      - main
+      - develop
+      - recommendation-test
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    name: Neo4j + RabbitMQ Integration Tests
+
+    runs-on: ubuntu-latest
+
+    services:
+      neo4j:
+        image: neo4j:5
+        env:
+          NEO4J_AUTH: neo4j/testpassword
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p testpassword 'RETURN 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      rabbitmq:
+        image: rabbitmq:4-management
+        env:
+          RABBITMQ_DEFAULT_USER: test
+          RABBITMQ_DEFAULT_PASS: testpassword
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build solution
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run Recommendation integration tests
+        run: >
+          dotnet test
+          ./Recommendation.IntegrationTests/Recommendation.IntegrationTests.csproj
+          --no-build
+          --configuration Release
+          --logger "trx;LogFileName=recommendation-tests.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recommendation-test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: ignore
