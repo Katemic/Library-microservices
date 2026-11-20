@@ -6,10 +6,12 @@ on:
     branches:
       - main
       - develop
+      - recommendation-test
   pull_request:
     branches:
       - main
       - develop
+      - recommendation-test
   workflow_dispatch:
 
 jobs:
