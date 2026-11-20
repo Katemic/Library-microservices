@@ -2,6 +2,7 @@
 using Neo4j.Driver;
 using Recommendation.Consumers;
 using Recommendation.Persistence;
+using Recommendation.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,12 +36,28 @@ builder.Services.AddSingleton<IDriver>(sp =>
 // ========================================
 
 builder.Services.AddSingleton<GraphRepository>();
+builder.Services.AddSingleton<RecommendationQueries>();
 
 // ========================================
 // RABBITMQ CONSUMER
 // ========================================
 
 builder.Services.AddHostedService<RecommendationConsumer>();
+
+// ========================================
+// OLLAMA (LLM RANKING)
+// ========================================
+
+builder.Services.AddHttpClient<OllamaClient>(client =>
+{
+    var baseUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
+    client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+    // Local models on CPU can be slow; fall back to graph ranking after this.
+    client.Timeout = TimeSpan.FromSeconds(
+        builder.Configuration.GetValue("Ollama:TimeoutSeconds", 60));
+});
+
+builder.Services.AddScoped<RecommendationService>();
 
 var app = builder.Build();
 
@@ -68,6 +85,17 @@ app.MapGet("/health/neo4j", async (IDriver driver) =>
     {
         return Results.StatusCode(503);
     }
+});
+
+// Recommendations for a loaner (LLM-ranked, graph fallback).
+app.MapGet("/recommendations/{loanerId:int}", async (
+    int loanerId,
+    int? count,
+    RecommendationService service,
+    CancellationToken cancellationToken) =>
+{
+    var take = Math.Clamp(count ?? 5, 1, 20);
+    return Results.Ok(await service.RecommendAsync(loanerId, take, cancellationToken));
 });
 
 app.Run();

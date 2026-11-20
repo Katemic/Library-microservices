@@ -477,7 +477,13 @@ services:
       RabbitMQ__Username: ${RABBIT_USER}
       RabbitMQ__Password: ${RABBIT_PASSWORD}
 
-    
+      # Ollama runs on the host machine, not in compose.
+      Ollama__BaseUrl: http://host.docker.internal:11434
+      Ollama__Model: llama3.2
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     depends_on:
       recommendation-neo4j-schema:
         condition: service_completed_successfully
