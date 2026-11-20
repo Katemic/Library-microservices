@@ -28,6 +28,9 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
             entity.Property(loan => loan.ItemId)
                 .HasColumnName("item_id")
                 .IsRequired();
+            entity.Property(loan => loan.InventoryId)
+                .HasColumnName("inventory_id");
+            entity.HasIndex(loan => loan.InventoryId);
             entity.Property(loan => loan.ItemName)
                 .HasColumnName("item_name")
                 .IsRequired();
@@ -65,7 +68,8 @@ public class LoanDbContext(DbContextOptions<LoanDbContext> options) : DbContext(
                 .HasColumnName("placement")
                 .HasMaxLength(128)
                 .IsRequired();
-            entity.HasIndex(inventory => inventory.ItemId).IsUnique();
+            // An item can have many copies, so ItemId is not unique.
+            entity.HasIndex(inventory => inventory.ItemId);
         });
 
         modelBuilder.Entity<Fine>(entity =>

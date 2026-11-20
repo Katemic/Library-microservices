@@ -10,6 +10,35 @@ Content-Type: application/json
 
 {
 	"itemId": 103,
-	"loanerId": 9003,
-	"dueAtUtc": "2026-11-04T09:00:00Z"
+	"loanerId": 9003
+}
+
+###
+
+# List every copy of an item
+GET {{Loan_HostAddress}}/api/inventory/item/101
+Accept: application/json
+
+###
+
+# Register another copy of the same item
+POST {{Loan_HostAddress}}/api/inventory
+Content-Type: application/json
+
+{
+	"itemId": 101,
+	"barcode": "CAT-101-3",
+	"placement": "Branch library - shelf B4"
+}
+
+###
+
+# Loan a specific copy (e.g. after scanning its barcode)
+POST {{Loan_HostAddress}}/api/loans
+Content-Type: application/json
+
+{
+	"itemId": 101,
+	"inventoryId": 303,
+	"loanerId": 9002
 }
