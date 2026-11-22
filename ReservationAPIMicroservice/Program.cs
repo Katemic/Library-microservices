@@ -39,7 +39,9 @@ builder.Services.AddSingleton<IConnection>(_ =>
         .GetResult();
 });
 
-builder.Services.AddScoped<IReservationService>();
+builder.Services.AddScoped<
+    IReservationService,
+    ReservationService>();
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddHostedService<InventoryConsumerService>();
 builder.Services.AddHostedService<ItemConsumerService>();
@@ -68,3 +70,5 @@ catch (Exception ex)
 }
 
 app.Run();
+
+public partial class Program { }

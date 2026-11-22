@@ -9,7 +9,7 @@ using ReservationAPIMicroservice.Services.RabbitMQ;
 
 namespace ReservationAPIMicroservice.Services
 {
-    public class ReservationService
+    public class ReservationService : IReservationService
     {
         private readonly ReservationDbContext _context;
 
@@ -43,8 +43,8 @@ namespace ReservationAPIMicroservice.Services
         }
 
 
-        public async Task<ActionResult<ReservationResponseDto>>
-            GetReservationById(int id)
+        public async Task<ReservationResponseDto?>
+        GetReservationById(int id)
         {
             var reservation = await (
                 from r in _context.Reservations.AsNoTracking()
@@ -120,7 +120,7 @@ namespace ReservationAPIMicroservice.Services
                     reservation.QueueNumber,
                     reservation.ReservationTime,
                     DateTime.UtcNow,
-                    reservation.ItemNavigation.Name));
+                    item.Name));
 
             // Construct the response DTO.
             var response = new ReservationResponseDto
@@ -140,7 +140,8 @@ namespace ReservationAPIMicroservice.Services
         public async Task<Reservation> DeleteReservationAsync(int id)
         {
             var reservation = await _context.Reservations
-                .FirstOrDefaultAsync(r => r.Id == id);
+            .Include(r => r.ItemNavigation)
+            .FirstOrDefaultAsync(r => r.Id == id);
 
             if (reservation == null)
                 return null;

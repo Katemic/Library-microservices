@@ -9,7 +9,7 @@ namespace ReservationAPIMicroservice.Services
         public interface IReservationService
         {
             Task<List<ReservationResponseDto>> GetAllReservationsAsync();
-            Task<ActionResult<ReservationResponseDto>>GetReservationById(int id);
+            Task<ReservationResponseDto?>GetReservationById(int id);
             Task<Result<ReservationResponseDto>> CreateReservationAsync(ReservationCreateDto dto);
             Task<Reservation> DeleteReservationAsync(int id);
         }

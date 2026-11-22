@@ -147,11 +147,11 @@ namespace ReservationAPIMicroservice.Services.Tests
                 await _reservationService.GetReservationById(1);
 
             // Assert
-            Assert.IsNotNull(result.Value);
+            Assert.IsNotNull(result);
 
-            Assert.AreEqual(1, result.Value.Id);
-            Assert.AreEqual(10, result.Value.UserId);
-            Assert.AreEqual("Hunger Games", result.Value.ItemName);
+            Assert.AreEqual(1, result.Id);
+            Assert.AreEqual(10, result.UserId);
+            Assert.AreEqual("Hunger Games", result.ItemName);
         }
 
         [TestMethod]
@@ -165,7 +165,7 @@ namespace ReservationAPIMicroservice.Services.Tests
                 await _reservationService.GetReservationById(99);
 
             // Assert
-            Assert.IsNull(result.Value);
+            Assert.IsNull(result);
         }
 
         // =========================================
