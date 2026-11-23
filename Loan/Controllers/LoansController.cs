@@ -64,7 +64,6 @@ public class LoansController(
             await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         Inventory? inventory;
-        var inventoryWasCreated = false;
 
         if (loan.InventoryId is int requestedCopyId)
         {
@@ -100,47 +99,29 @@ public class LoansController(
 
             if (copies.Count == 0)
             {
-                // Keep the old behaviour for items with no registered copies:
-                // create a placeholder copy so the loan can still be made.
-                inventory = new Inventory
-                {
-                    ItemId = loan.ItemId,
-                    Status = InventoryStatus.Loaned,
-                    Barcode = string.Empty,
-                    Placement = string.Empty
-                };
-                dbContext.Inventories.Add(inventory);
-                inventoryWasCreated = true;
+                // There is no physical copy to hand out.
+                return Conflict("This item has no copies in the inventory.");
             }
-            else
+
+            inventory = null;
+
+            foreach (var copy in copies.Where(item => item.Status == InventoryStatus.Available))
             {
-                inventory = null;
-
-                foreach (var copy in copies.Where(item => item.Status == InventoryStatus.Available))
+                if (await TryClaimCopyAsync(copy.Id, cancellationToken))
                 {
-                    if (await TryClaimCopyAsync(copy.Id, cancellationToken))
-                    {
-                        inventory = copy;
-                        inventory.Status = InventoryStatus.Loaned;
-                        break;
-                    }
+                    inventory = copy;
+                    inventory.Status = InventoryStatus.Loaned;
+                    break;
                 }
+            }
 
-                if (inventory is null)
-                {
-                    return Conflict("No available copies of this item.");
-                }
+            if (inventory is null)
+            {
+                return Conflict("No available copies of this item.");
             }
         }
 
         dbContext.Loans.Add(loan);
-
-        if (inventoryWasCreated)
-        {
-            // The placeholder copy needs an id before the loan can point to it.
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-
         loan.InventoryId = inventory.Id;
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -149,30 +130,15 @@ public class LoansController(
             "Loan.Created",
             new LoanCreatedEvent(loan.Id, loan.LoanerId, loan.ItemId),
             cancellationToken);
-        if (inventoryWasCreated)
-        {
-            await publisher.PublishAsync(
-                "Inventory.Created",
-                new InventoryCreatedEvent(
-                    inventory.Id,
-                    inventory.ItemId,
-                    inventory.Status.ToString(),
-                    inventory.Barcode,
-                    inventory.Placement),
-                cancellationToken);
-        }
-        else
-        {
-            await publisher.PublishAsync(
-                "Inventory.Updated",
-                new InventoryUpdatedEvent(
-                    inventory.Id,
-                    inventory.ItemId,
-                    inventory.Status.ToString(),
-                    inventory.Barcode,
-                    inventory.Placement),
-                cancellationToken);
-        }
+        await publisher.PublishAsync(
+            "Inventory.Updated",
+            new InventoryUpdatedEvent(
+                inventory.Id,
+                inventory.ItemId,
+                inventory.Status.ToString(),
+                inventory.Barcode,
+                inventory.Placement),
+            cancellationToken);
 
         return CreatedAtAction(nameof(GetAll), new { id = loan.Id }, loan);
     }

@@ -87,6 +87,7 @@ public sealed class LoansControllerTests
     public async Task Create_UnknownItem_UsesTrimmedNameFromRequest()
     {
         using var fixture = new LoanTestFixture();
+        await fixture.AddInventoryAsync(itemId: 1);
 
         var result = await fixture.Controller.Create(
             new CreateLoanRequest { ItemId = 1, LoanerId = 42, ItemName = "  Dune  " },
@@ -299,7 +300,7 @@ public sealed class LoansControllerTests
     }
 
     [TestMethod]
-    public async Task Create_ItemHasNoCopies_CreatesPlaceholderCopy()
+    public async Task Create_ItemHasNoCopies_ReturnsConflictAndCreatesNothing()
     {
         using var fixture = new LoanTestFixture();
         await fixture.AddItemSnapshotAsync(id: 1, name: "Dune");
@@ -308,12 +309,11 @@ public sealed class LoansControllerTests
             new CreateLoanRequest { ItemId = 1, LoanerId = 42 },
             CancellationToken.None);
 
-        var loan = GetCreatedLoan(result);
+        Assert.IsInstanceOfType<ConflictObjectResult>(result.Result);
         await using var db = fixture.NewDbContext();
-        var placeholder = await db.Inventories.SingleAsync();
-        Assert.AreEqual(1, placeholder.ItemId);
-        Assert.AreEqual(InventoryStatus.Loaned, placeholder.Status);
-        Assert.AreEqual(placeholder.Id, loan.InventoryId);
+        Assert.AreEqual(0, await db.Loans.CountAsync());
+        Assert.AreEqual(0, await db.Inventories.CountAsync());
+        Assert.AreEqual(0, fixture.Publisher.Invocations.Count);
     }
 
     // ------------------------------------------------------------------
@@ -359,27 +359,6 @@ public sealed class LoansControllerTests
             Times.Once);
         fixture.Publisher.Verify(
             p => p.PublishAsync("Inventory.Created", It.IsAny<InventoryCreatedEvent>(), It.IsAny<CancellationToken>()),
-            Times.Never);
-    }
-
-    [TestMethod]
-    public async Task Create_PlaceholderCopy_PublishesInventoryCreated()
-    {
-        using var fixture = new LoanTestFixture();
-        await fixture.AddItemSnapshotAsync(id: 1, name: "Dune");
-
-        await fixture.Controller.Create(
-            new CreateLoanRequest { ItemId = 1, LoanerId = 42 },
-            CancellationToken.None);
-
-        fixture.Publisher.Verify(
-            p => p.PublishAsync(
-                "Inventory.Created",
-                It.Is<InventoryCreatedEvent>(e => e.ItemId == 1 && e.Status == "Loaned"),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-        fixture.Publisher.Verify(
-            p => p.PublishAsync("Inventory.Updated", It.IsAny<InventoryUpdatedEvent>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
