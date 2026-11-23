@@ -1,0 +1,53 @@
+name: Loan CI
+
+# Runs when the Loan service, its tests or this workflow change.
+on:
+  push:
+    paths:
+      - "Loan/**"
+      - "LoanUnitTests/**"
+      - ".github/workflows/loan-ci.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "Loan/**"
+      - "LoanUnitTests/**"
+      - ".github/workflows/loan-ci.yml"
+  # Lets you start the workflow by hand from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Restoring and building the test project also builds Loan,
+      # because the test project references it.
+      - name: Restore
+        run: dotnet restore LoanUnitTests/LoanUnitTests.csproj
+
+      - name: Build
+        run: dotnet build LoanUnitTests/LoanUnitTests.csproj --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: >
+          dotnet test LoanUnitTests/LoanUnitTests.csproj
+          --configuration Release --no-build
+          -- --report-trx --coverage --coverage-output-format cobertura
+          --results-directory ${{ github.workspace }}/TestResults
+
+      # Runs even when tests fail, so you can see what went wrong.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loan-test-results
+          path: TestResults/
