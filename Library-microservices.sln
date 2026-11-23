@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 18
-VisualStudioVersion = 18.12.12405.243
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36310.24 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Loan", "Loan\Loan.csproj", "{0BB03AFC-0379-4ACA-8F2F-FE82F2BABAC0}"
 EndProject
@@ -22,6 +22,17 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Recommendation", "Recommendation\Recommendation.csproj", "{441879A7-E9EF-46D1-85F2-BE2F43198806}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notification", "Notification\Notification.csproj", "{64E674A4-7A59-4242-B1C4-7096234B3D78}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Recommendation.IntegrationTests", "Recommendation.IntegrationTests\Recommendation.IntegrationTests.csproj", "{FFB05633-3F78-497F-9563-A3D62C3F7124}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{863FA599-09F5-4250-970A-8ED09B9CD9CD}"
+	ProjectSection(SolutionItems) = preProject
+		recommendation-tests.yml = recommendation-tests.yml
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Recommendation.UnitTest", "Recommendation.UnitTest\Recommendation.UnitTest.csproj", "{E12E0C9A-F734-4097-A33C-9E937B8DE6F0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -53,9 +64,21 @@ Global
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{64E674A4-7A59-4242-B1C4-7096234B3D78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFB05633-3F78-497F-9563-A3D62C3F7124}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFB05633-3F78-497F-9563-A3D62C3F7124}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFB05633-3F78-497F-9563-A3D62C3F7124}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFB05633-3F78-497F-9563-A3D62C3F7124}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E12E0C9A-F734-4097-A33C-9E937B8DE6F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E12E0C9A-F734-4097-A33C-9E937B8DE6F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E12E0C9A-F734-4097-A33C-9E937B8DE6F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E12E0C9A-F734-4097-A33C-9E937B8DE6F0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{02EA681E-C7D8-13C7-8484-4AC65E1B71E8} = {8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}
+		{863FA599-09F5-4250-970A-8ED09B9CD9CD} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {432B8108-EF53-4C92-A3A4-680EECA716C8}

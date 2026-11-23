@@ -1,0 +1,35 @@
+﻿
+services:
+  neo4j-test:
+    image: neo4j:5
+    container_name: recommendation-neo4j-test
+    ports:
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/testpassword
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - cypher-shell -u neo4j -p testpassword "RETURN 1"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq-test:
+    image: rabbitmq:4-management
+    container_name: recommendation-rabbitmq-test
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: test
+      RABBITMQ_DEFAULT_PASS: testpassword
+    healthcheck:
+      test:
+        - CMD
+        - rabbitmq-diagnostics
+        - -q
+        - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20

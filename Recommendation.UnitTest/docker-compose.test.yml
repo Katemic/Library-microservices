@@ -1,0 +1,10 @@
+﻿services:
+  recommendation-tests:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /src
+    volumes:
+      - .:/src
+    command: >
+      dotnet test Recommendation.UnitTest/Recommendation.UnitTest.csproj
+      --configuration Release
+      --logger "console;verbosity=normal"

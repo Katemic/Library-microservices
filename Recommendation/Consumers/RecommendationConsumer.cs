@@ -248,28 +248,16 @@ public sealed class RecommendationConsumer : BackgroundService
     // =========================================
 
     private async Task ProcessMessageAsync(
-        string routingKey,
-        string json)
+    string routingKey,
+    string json)
     {
         switch (routingKey)
         {
-            // -----------------------------
-            // USER CREATED
-            // -----------------------------
             case "user.created":
                 {
-                    var evt = Deserialize<UserCreatedEvent>(json);
-
-                    if (evt.EventType != routingKey ||
-                        evt.EventId == Guid.Empty ||
-                        evt.SchemaVersion != 1 ||
-                        evt.Data is null ||
-                        evt.Data.UserId <= 0 ||
-                        evt.Data.UserVersion <= 0)
-                    {
-                        throw new JsonException(
-                            "Invalid user.created event");
-                    }
+                    var evt = EventValidator.ValidateUserCreated(
+                        Deserialize<UserCreatedEvent>(json),
+                        routingKey);
 
                     await _repository.CreateUserAsync(evt);
 
@@ -279,46 +267,13 @@ public sealed class RecommendationConsumer : BackgroundService
 
                     break;
                 }
-
-            // -----------------------------
-            // CATALOG ITEM EVENTS
-            // -----------------------------
             case "catalog.item.added":
             case "catalog.item.updated":
             case "catalog.item.deleted":
                 {
-                    var evt = Deserialize<CatalogItemEvent>(json);
-
-                    if (evt.EventType != routingKey ||
-                        evt.EventId == Guid.Empty ||
-                        evt.SchemaVersion != 1 ||
-                        evt.ItemId <= 0 ||
-                        evt.ItemVersion <= 0 ||
-                        evt.Item is null ||
-                        evt.Item.Id != evt.ItemId ||
-                        evt.Item.ItemVersion != evt.ItemVersion ||
-                        string.IsNullOrWhiteSpace(evt.Item.Name))
-                    {
-                        throw new JsonException(
-                            "Invalid Catalog item event");
-                    }
-
-                    bool shouldBeDeleted =
-                        routingKey == "catalog.item.deleted";
-
-                    if ((evt.Item.IsDeleted ?? false)
-                        != shouldBeDeleted)
-                    {
-                        throw new JsonException(
-                            "Catalog deletion state mismatch");
-                    }
-
-                    if (shouldBeDeleted &&
-                        evt.Item.DeletedAtUtc is null)
-                    {
-                        throw new JsonException(
-                            "Deletion timestamp missing");
-                    }
+                    var evt = EventValidator.ValidateCatalogItem(
+                        Deserialize<CatalogItemEvent>(json),
+                        routingKey);
 
                     await _repository.UpsertItemAsync(evt);
 
@@ -330,21 +285,10 @@ public sealed class RecommendationConsumer : BackgroundService
 
                     break;
                 }
-
-            // -----------------------------
-            // LOAN CREATED
-            // -----------------------------
             case "Loan.Created":
                 {
-                    var evt = Deserialize<LoanCreatedEvent>(json);
-
-                    if (evt.Id <= 0 ||
-                        evt.LoanerId <= 0 ||
-                        evt.ItemId <= 0)
-                    {
-                        throw new JsonException(
-                            "Invalid Loan.Created event");
-                    }
+                    var evt = EventValidator.ValidateLoanCreated(
+                        Deserialize<LoanCreatedEvent>(json));
 
                     await _repository.CreateLoanAsync(evt);
 
@@ -354,7 +298,6 @@ public sealed class RecommendationConsumer : BackgroundService
 
                     break;
                 }
-
             default:
                 throw new JsonException(
                     $"Unsupported routing key: {routingKey}");
