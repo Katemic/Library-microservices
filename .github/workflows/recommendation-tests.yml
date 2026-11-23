@@ -4,10 +4,10 @@ name: Recommendation Tests
 on:
   push:
     branches:
-      - recommendation-test
+      - dev-LLM+Loanfix
   pull_request:
     branches:
-      - recommendation-test
+      - dev-LLM+Loanfix
   workflow_dispatch:
 
 jobs:
