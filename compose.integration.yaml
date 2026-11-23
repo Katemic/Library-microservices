@@ -281,7 +281,7 @@ services:
       FLYWAY_VALIDATE_MIGRATION_NAMING: "true"
 
     volumes:
-      - ./ReservationAPIMicroservice/Database/Migrations:/flyway/sql:ro
+      - ./ReservationAPIMicroservice/database/Migrations:/flyway/sql:ro
 
     depends_on:
       reservation-mysql:

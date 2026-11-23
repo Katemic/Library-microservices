@@ -1,0 +1,84 @@
+name: Loan + Reservation system tests
+
+# Starts RabbitMQ, Loan and Reservation (with their databases) in Docker,
+# then checks that Reservation's inventory follows the loans made in Loan.
+on:
+  push:
+    paths:
+      - "Loan/**"
+      - "ReservationAPIMicroservice/**"
+      - "LoanReservationSystemTest/**"
+      - "compose.integration.yaml"
+      - ".github/workflows/loan-reservation-system-tests.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "Loan/**"
+      - "ReservationAPIMicroservice/**"
+      - "LoanReservationSystemTest/**"
+      - "compose.integration.yaml"
+      - ".github/workflows/loan-reservation-system-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ENV_FILE: LoanReservationSystemTest/system-test.env
+  COMPOSE: docker compose -f compose.integration.yaml --env-file LoanReservationSystemTest/system-test.env -p loan-reservation-systemtest
+
+jobs:
+  system-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # New random passwords on every run, so none are stored anywhere.
+      # add-mask hides them if they ever show up in the log.
+      - name: Create system-test.env with random passwords
+        run: |
+          {
+            echo "RABBIT_USER=systemtest"
+            for name in RABBIT_PASSWORD LOAN_ROOT_PASSWORD LOAN_DB_PASSWORD RESERVATION_ROOT_PASSWORD RESERVATION_DB_PASSWORD; do
+              value=$(openssl rand -hex 16)
+              echo "::add-mask::$value"
+              echo "$name=$value"
+            done
+          } > "$ENV_FILE"
+
+      - name: Start RabbitMQ, Loan and Reservation
+        run: $COMPOSE up -d --build loan-api reservation-api
+
+      - name: Build system tests
+        run: dotnet build LoanReservationSystemTest/LoanReservationSystemTest.csproj --configuration Release
+
+      # The tests wait by themselves until both services and their
+      # RabbitMQ queues are ready.
+      - name: Run system tests
+        run: >
+          dotnet test LoanReservationSystemTest/LoanReservationSystemTest.csproj
+          --configuration Release --no-build
+          -- --report-trx --results-directory ${{ github.workspace }}/TestResults
+
+      - name: Show service logs (only if something failed)
+        if: failure()
+        run: $COMPOSE logs --no-color loan-api reservation-api loan-flyway reservation-flyway
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: loan-reservation-system-test-results
+          path: TestResults/
+
+      - name: Stop containers and delete their data
+        if: always()
+        run: $COMPOSE down -v

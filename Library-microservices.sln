@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35707.178 d17.12
+VisualStudioVersion = 17.12.35707.178
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Loan", "Loan\Loan.csproj", "{0BB03AFC-0379-4ACA-8F2F-FE82F2BABAC0}"
 EndProject
@@ -24,6 +24,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notification", "Notification\Notification.csproj", "{64E674A4-7A59-4242-B1C4-7096234B3D78}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LoanUnitTests", "LoanUnitTests\LoanUnitTests.csproj", "{DC41F3CA-D4A0-4285-9108-335592CD311B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LoanReservationSystemTest", "LoanReservationSystemTest\LoanReservationSystemTest.csproj", "{6C6E9FB7-045D-4700-9067-47EC1FF02A87}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -59,6 +61,10 @@ Global
 		{DC41F3CA-D4A0-4285-9108-335592CD311B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DC41F3CA-D4A0-4285-9108-335592CD311B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DC41F3CA-D4A0-4285-9108-335592CD311B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C6E9FB7-045D-4700-9067-47EC1FF02A87}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C6E9FB7-045D-4700-9067-47EC1FF02A87}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C6E9FB7-045D-4700-9067-47EC1FF02A87}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C6E9FB7-045D-4700-9067-47EC1FF02A87}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

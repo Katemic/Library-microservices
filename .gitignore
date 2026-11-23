@@ -365,6 +365,8 @@ FodyWeavers.xsd
 # Environment variables
 .env
 **/.env
+# Local passwords for the Loan + Reservation system tests (see LoanReservationSystemTest/README.md)
+LoanReservationSystemTest/system-test.env
 
 # Local development files
 bin/
