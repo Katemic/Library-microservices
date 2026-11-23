@@ -1,5 +1,4 @@
-﻿
-using System.Text.Json;
+﻿using System.Text.Json;
 using FluentAssertions;
 using Recommendation.Consumers;
 using Recommendation.Contracts;
