@@ -1,6 +1,8 @@
-name: Loan CI
+name: Loan CI/CD
 
-# Runs when the Loan service, its tests or this workflow change.
+# CI: builds and tests Loan on every push and pull request that touches it.
+# CD: on master only, and only if the tests pass, builds the Loan Docker
+#     image and pushes it to Docker Hub (same names as docker-publish.yml).
 on:
   push:
     paths:
@@ -51,3 +53,35 @@ jobs:
         with:
           name: loan-test-results
           path: TestResults/
+
+  docker-publish:
+    name: Build and push Docker image
+    # Waits for the tests; if they fail, this job never starts.
+    needs: build-and-test
+    # Only for master: pushes and manual runs, never pull requests.
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # "latest" is always the newest tested version; the commit id
+      # tag keeps every version, so you can go back to an older one.
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Loan
+          push: true
+          tags: |
+            ${{ vars.DOCKERHUB_USERNAME }}/library-loan:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/library-loan:${{ github.sha }}
