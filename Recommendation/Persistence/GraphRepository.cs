@@ -123,7 +123,6 @@ public sealed class GraphRepository
                     i.media_type = $mediaType,
                     i.release_year = $releaseYear,
                     i.description = $description,
-                    i.review_summary = $reviewSummary,
                     i.image = $image,
                     i.average_stars = $averageStars,
                     i.version = $version,
@@ -140,7 +139,6 @@ public sealed class GraphRepository
                     mediaType = item.MediaType,
                     releaseYear = item.ReleaseYear,
                     description = item.Description,
-                    reviewSummary = item.ReviewSummary,
                     image = item.Image,
                     averageStars = item.AverageStars,
                     isDeleted = item.IsDeleted ?? false,
@@ -191,15 +189,13 @@ public sealed class GraphRepository
                     tx,
                     """
                     MATCH (i:item {id: $itemId})
-                    MERGE (l:language {id: $id})
-                    SET l.name = $name
+                    MERGE (l:language {id: $name})
                     MERGE (i)-[:HAS_LANGUAGE]->(l)
                     """,
                     new
                     {
                         itemId = message.ItemId,
-                        id = item.Language.Id,
-                        name = item.Language.Name
+                        name = item.Language.Name.Trim()
                     });
             }
 
@@ -268,18 +264,17 @@ public sealed class GraphRepository
                 """
                 UNWIND $genres AS genre
                 MATCH (i:item {id: $itemId})
-                MERGE (g:genre {id: genre.id})
-                SET g.name = genre.name
+                MERGE (g:genre {id: genre.name})
                 MERGE (i)-[:GENRE_IS]->(g)
                 """,
                 new
                 {
                     itemId = message.ItemId,
                     genres = (item.Genres ?? [])
+                        .Where(g => !string.IsNullOrWhiteSpace(g.Name))
                         .Select(g => new
                         {
-                            id = g.Id,
-                            name = g.Name
+                            name = g.Name!.Trim()
                         })
                         .ToList()
                 });
@@ -293,18 +288,17 @@ public sealed class GraphRepository
                 """
                 UNWIND $tags AS tag
                 MATCH (i:item {id: $itemId})
-                MERGE (t:tag {id: tag.id})
-                SET t.name = tag.name
+                MERGE (t:tag {id: tag.name})
                 MERGE (i)-[:TAGGED_AS]->(t)
                 """,
                 new
                 {
                     itemId = message.ItemId,
                     tags = (item.Tags ?? [])
+                        .Where(t => !string.IsNullOrWhiteSpace(t.Name))
                         .Select(t => new
                         {
-                            id = t.Id,
-                            name = t.Name
+                            name = t.Name!.Trim()
                         })
                         .ToList()
                 });
@@ -313,16 +307,16 @@ public sealed class GraphRepository
             // 8. Book details
             // ----------------------------------
 
-            if (item.BookDetails is not null)
+            if (item.BookDetails is not null &&
+                !string.IsNullOrWhiteSpace(item.BookDetails.ISBN))
             {
                 await RunAsync(
                     tx,
                     """
                     MATCH (i:item {id: $itemId})
-                    MERGE (b:book {id: $itemId})
+                    MERGE (b:book {id: $isbn})
 
-                    SET b.ISBN = $isbn,
-                        b.no_of_pages = $pages,
+                    SET b.no_of_pages = $pages,
                         b.version = $edition
 
                     MERGE (i)-[:IS_BOOK]->(b)
@@ -330,7 +324,7 @@ public sealed class GraphRepository
                     new
                     {
                         itemId = message.ItemId,
-                        isbn = item.BookDetails.ISBN,
+                        isbn = item.BookDetails.ISBN.Trim(),
                         pages = item.BookDetails.NoOfPages,
                         edition = item.BookDetails.Version
                     });

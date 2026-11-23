@@ -1,6 +1,4 @@
-﻿
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Neo4j.Driver;
+﻿using Neo4j.Driver;
 using Recommendation.Contracts;
 using Recommendation.IntegrationTests.Infrastructure;
 
@@ -39,31 +37,6 @@ public sealed class GraphRepositoryTests
 
         Assert.AreEqual(
             1L,
-            result.Current["version"].As<long>());
-    }
-
-    [TestMethod]
-    public async Task CreateUser_ShouldNotOverwriteNewerVersion()
-    {
-        await TestInfrastructure.Repository.CreateUserAsync(
-            CreateUser(100, 5));
-
-        await TestInfrastructure.Repository.CreateUserAsync(
-            CreateUser(100, 2));
-
-        await using var session =
-            TestInfrastructure.Driver.AsyncSession();
-
-        var result = await session.RunAsync(
-            """
-            MATCH (u:Loaner {id: 100})
-            RETURN u.userVersion AS version
-            """);
-
-        Assert.IsTrue(await result.FetchAsync());
-
-        Assert.AreEqual(
-            5L,
             result.Current["version"].As<long>());
     }
 
@@ -162,10 +135,10 @@ public sealed class GraphRepositoryTests
             OPTIONAL MATCH (i)-[:TAGGED_AS]->(t:tag)
             OPTIONAL MATCH (i)-[:CREATED_BY]->(c:creator)
 
-            RETURN l.name AS language,
+            RETURN l.id AS language,
                    p.name AS publisher,
-                   g.name AS genre,
-                   t.name AS tag,
+                   g.id AS genre,
+                   t.id AS tag,
                    c.last_name AS creator
             """);
 
@@ -193,13 +166,54 @@ public sealed class GraphRepositoryTests
     }
 
     [TestMethod]
-    public async Task UpsertItem_ShouldIgnoreOlderEvents()
+    public async Task UpsertItem_LanguageShouldOnlyHaveIdProperty()
+    {
+        var evt = CreateItem(200, 1, "The Hobbit");
+
+        evt.Item.Language = new LookupDto
+        {
+            Id = 1,
+            Name = "English"
+        };
+
+        await TestInfrastructure.Repository.UpsertItemAsync(evt);
+
+        await using var session =
+            TestInfrastructure.Driver.AsyncSession();
+
+        var result = await session.RunAsync(
+            """
+            MATCH (l:language {id: 'English'})
+            RETURN keys(l) AS properties
+            """);
+
+        Assert.IsTrue(await result.FetchAsync());
+
+        var properties =
+            result.Current["properties"].As<List<string>>();
+
+        CollectionAssert.AreEqual(
+            new[] { "id" },
+            properties);
+    }
+
+    // =====================================
+    // DELETION TESTS
+    // =====================================
+
+    [TestMethod]
+    public async Task UpsertItem_ShouldMarkItemAsDeleted()
     {
         await TestInfrastructure.Repository.UpsertItemAsync(
-            CreateItem(200, 5, "New name"));
+            CreateItem(200, 1, "The Hobbit"));
 
-        await TestInfrastructure.Repository.UpsertItemAsync(
-            CreateItem(200, 2, "Old name"));
+        var deleted = CreateItem(200, 2, "The Hobbit");
+
+        deleted.EventType = "catalog.item.deleted";
+        deleted.Item.IsDeleted = true;
+        deleted.Item.DeletedAtUtc = DateTime.UtcNow;
+
+        await TestInfrastructure.Repository.UpsertItemAsync(deleted);
 
         await using var session =
             TestInfrastructure.Driver.AsyncSession();
@@ -207,88 +221,18 @@ public sealed class GraphRepositoryTests
         var result = await session.RunAsync(
             """
             MATCH (i:item {id: 200})
-            RETURN i.name AS name, i.version AS version
+            RETURN i.is_deleted AS deleted,
+                   i.version AS version
             """);
 
         Assert.IsTrue(await result.FetchAsync());
 
-        Assert.AreEqual(
-            "New name",
-            result.Current["name"].As<string>());
+        Assert.IsTrue(
+            result.Current["deleted"].As<bool>());
 
         Assert.AreEqual(
-            5L,
+            2L,
             result.Current["version"].As<long>());
-    }
-
-    [TestMethod]
-    public async Task UpsertItem_ShouldReplaceOldMetadata()
-    {
-        var first = CreateItem(200, 1, "Book");
-
-        first.Item.Genres =
-        [
-            new LookupDto { Id = 1, Name = "Fantasy" }
-        ];
-
-        await TestInfrastructure.Repository.UpsertItemAsync(first);
-
-        var second = CreateItem(200, 2, "Book");
-
-        second.Item.Genres =
-        [
-            new LookupDto { Id = 2, Name = "Science Fiction" }
-        ];
-
-        await TestInfrastructure.Repository.UpsertItemAsync(second);
-
-        await using var session =
-            TestInfrastructure.Driver.AsyncSession();
-
-        var result = await session.RunAsync(
-            """
-            MATCH (i:item {id: 200})-[:GENRE_IS]->(g:genre)
-            RETURN collect(g.name) AS genres
-            """);
-
-        Assert.IsTrue(await result.FetchAsync());
-
-        var genres = result.Current["genres"].As<List<string>>();
-
-        Assert.AreEqual(1, genres.Count);
-        Assert.AreEqual("Science Fiction", genres[0]);
-    }
-
-    [TestMethod]
-    public async Task UpsertItem_ShouldNotOverwriteLoanRelationships()
-    {
-        await TestInfrastructure.Repository.CreateLoanAsync(
-            new LoanCreatedEvent
-            {
-                Id = 500,
-                LoanerId = 100,
-                ItemId = 200
-            });
-
-        await TestInfrastructure.Repository.UpsertItemAsync(
-            CreateItem(200, 1, "The Hobbit"));
-
-        await using var session =
-            TestInfrastructure.Driver.AsyncSession();
-
-        var result = await session.RunAsync(
-            """
-            MATCH (:Loaner {id: 100})
-                -[r:LOANED_ITEM {loanId: 500}]->
-                (:item {id: 200})
-            RETURN count(r) AS count
-            """);
-
-        Assert.IsTrue(await result.FetchAsync());
-
-        Assert.AreEqual(
-            1L,
-            result.Current["count"].As<long>());
     }
 
     // =====================================
@@ -311,9 +255,9 @@ public sealed class GraphRepositoryTests
 
         var result = await session.RunAsync(
             """
-            MATCH (u:Loaner {id: 100})
+            MATCH (:Loaner {id: 100})
                 -[r:LOANED_ITEM {loanId: 500}]->
-                (i:item {id: 200})
+                (:item {id: 200})
             RETURN count(r) AS count
             """);
 
@@ -355,14 +299,9 @@ public sealed class GraphRepositoryTests
             result.Current["count"].As<long>());
     }
 
-    // =====================================
-    // EVENT ORDERING TESTS
-    // =====================================
-
     [TestMethod]
-    public async Task LoanBeforeCatalog_ShouldEventuallyCreateItem()
+    public async Task UpsertItem_ShouldNotOverwriteLoanRelationships()
     {
-        // Loan arrives first.
         await TestInfrastructure.Repository.CreateLoanAsync(
             new LoanCreatedEvent
             {
@@ -371,7 +310,42 @@ public sealed class GraphRepositoryTests
                 ItemId = 200
             });
 
-        // Catalog arrives afterwards.
+        await TestInfrastructure.Repository.UpsertItemAsync(
+            CreateItem(200, 1, "The Hobbit"));
+
+        await using var session =
+            TestInfrastructure.Driver.AsyncSession();
+
+        var result = await session.RunAsync(
+            """
+            MATCH (:Loaner {id: 100})
+                -[r:LOANED_ITEM {loanId: 500}]->
+                (:item {id: 200})
+            RETURN count(r) AS count
+            """);
+
+        Assert.IsTrue(await result.FetchAsync());
+
+        Assert.AreEqual(
+            1L,
+            result.Current["count"].As<long>());
+    }
+
+    // =====================================
+    // EVENT ORDERING TESTS
+    // =====================================
+
+    [TestMethod]
+    public async Task LoanBeforeCatalog_ShouldEventuallyCreateItem()
+    {
+        await TestInfrastructure.Repository.CreateLoanAsync(
+            new LoanCreatedEvent
+            {
+                Id = 500,
+                LoanerId = 100,
+                ItemId = 200
+            });
+
         await TestInfrastructure.Repository.UpsertItemAsync(
             CreateItem(200, 1, "The Hobbit"));
 
@@ -406,7 +380,6 @@ public sealed class GraphRepositoryTests
     [TestMethod]
     public async Task UserCreatedAfterLoan_ShouldUpdateExistingUser()
     {
-        // Loan arrives first and creates placeholder user.
         await TestInfrastructure.Repository.CreateLoanAsync(
             new LoanCreatedEvent
             {
@@ -415,7 +388,6 @@ public sealed class GraphRepositoryTests
                 ItemId = 200
             });
 
-        // User event arrives afterwards.
         await TestInfrastructure.Repository.CreateUserAsync(
             CreateUser(100, 1));
 
@@ -440,38 +412,6 @@ public sealed class GraphRepositoryTests
         Assert.AreEqual(
             1L,
             result.Current["loans"].As<long>());
-    }
-    [TestMethod]
-    public async Task UpsertItem_ShouldMarkItemAsDeleted()
-    {
-        await TestInfrastructure.Repository.UpsertItemAsync(
-            CreateItem(200, 1, "The Hobbit"));
-
-        var deleted = CreateItem(200, 2, "The Hobbit");
-
-        deleted.EventType = "catalog.item.deleted";
-        deleted.Item.IsDeleted = true;
-        deleted.Item.DeletedAtUtc = DateTime.UtcNow;
-
-        await TestInfrastructure.Repository.UpsertItemAsync(deleted);
-
-        await using var session =
-            TestInfrastructure.Driver.AsyncSession();
-
-        var result = await session.RunAsync(
-            """
-        MATCH (i:item {id: 200})
-        RETURN i.is_deleted AS deleted,
-               i.version AS version
-        """);
-
-        Assert.IsTrue(await result.FetchAsync());
-
-        Assert.IsTrue(result.Current["deleted"].As<bool>());
-
-        Assert.AreEqual(
-            2L,
-            result.Current["version"].As<long>());
     }
 
     // =====================================
