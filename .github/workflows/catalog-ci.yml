@@ -1,0 +1,31 @@
+﻿name: Catalog CI
+
+on:
+  push:
+    paths:
+      - 'Catalog/**'
+      - 'Catalog.Tests/**'
+      - '.github/workflows/catalog-ci.yml'
+
+  pull_request:
+    paths:
+      - 'Catalog/**'
+      - 'Catalog.Tests/**'
+      - '.github/workflows/catalog-ci.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-unit-tests:
+    name: Catalog Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Catalog unit tests
+        uses: ./Catalog/.github/actions/unit-tests

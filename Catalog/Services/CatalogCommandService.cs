@@ -40,7 +40,7 @@ public class CatalogCommandService
     // -----------------------------------------
     // VALIDATION
     // -----------------------------------------
-    private static void Validate(CatalogItemInput input)
+    internal static void Validate(CatalogItemInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name) ||
             input.Name.Length > 255)
