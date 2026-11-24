@@ -189,7 +189,7 @@ public sealed class GraphRepository
                     tx,
                     """
                     MATCH (i:item {id: $itemId})
-                    MERGE (l:language {id: $name})
+                    MERGE (l:language {name: $name})
                     MERGE (i)-[:HAS_LANGUAGE]->(l)
                     """,
                     new
@@ -264,7 +264,7 @@ public sealed class GraphRepository
                 """
                 UNWIND $genres AS genre
                 MATCH (i:item {id: $itemId})
-                MERGE (g:genre {id: genre.name})
+                MERGE (g:genre {name: genre.name})
                 MERGE (i)-[:GENRE_IS]->(g)
                 """,
                 new
@@ -288,7 +288,7 @@ public sealed class GraphRepository
                 """
                 UNWIND $tags AS tag
                 MATCH (i:item {id: $itemId})
-                MERGE (t:tag {id: tag.name})
+                MERGE (t:tag {name: tag.name})
                 MERGE (i)-[:TAGGED_AS]->(t)
                 """,
                 new
