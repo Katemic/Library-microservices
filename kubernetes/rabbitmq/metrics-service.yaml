@@ -1,0 +1,14 @@
+# Internal-only metrics endpoint: do NOT add 15692 to the existing NodePort service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-metrics
+  namespace: library
+spec:
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+    - name: prometheus
+      port: 15692
+      targetPort: 15692

@@ -61,6 +61,11 @@ spec:
           value: amqp://$(RABBIT_USER):$(RABBIT_PASSWORD)@rabbitmq:5672/
         - name: RabbitMq__Exchange
           value: catalog.events
+        - name: Logging__Console__FormatterName
+          value: json
+        # Suppress repetitive Microsoft framework Information logs
+        - name: Logging__LogLevel__Microsoft
+          value: Warning
         ports:
         - name: http
           containerPort: 8080

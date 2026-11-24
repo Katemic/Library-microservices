@@ -35,9 +35,15 @@ spec:
           containerPort: 5672
         - name: management
           containerPort: 15672
+        - name: prometheus
+          containerPort: 15692
         volumeMounts:
         - name: data
           mountPath: /var/lib/rabbitmq
+        - name: enabled-plugins
+          mountPath: /etc/rabbitmq/enabled_plugins
+          subPath: enabled_plugins
+          readOnly: true
         resources:
           requests:
             cpu: 100m
@@ -56,3 +62,6 @@ spec:
       - name: data
         persistentVolumeClaim:
           claimName: rabbitmq-data
+      - name: enabled-plugins
+        configMap:
+          name: rabbitmq-enabled-plugins

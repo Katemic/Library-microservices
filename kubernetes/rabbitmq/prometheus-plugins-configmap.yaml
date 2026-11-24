@@ -1,0 +1,9 @@
+# Enables RabbitMQ management and the built-in Prometheus plugin at startup.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-enabled-plugins
+  namespace: library
+data:
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_prometheus].
