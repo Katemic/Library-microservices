@@ -9,7 +9,7 @@ using ReservationAPIMicroserviceTests.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 
-namespace ReservationAPIMicroserviceTests.Services;
+namespace ReservationAPIMicroserviceTests.Integration;
 
 [TestClass]
 public class ReservationsIntegrationTests

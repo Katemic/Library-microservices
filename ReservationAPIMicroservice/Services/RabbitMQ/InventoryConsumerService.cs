@@ -158,7 +158,7 @@ public sealed class InventoryConsumerService(
         };
     }
 
-    private async Task ProcessMessageAsync(
+    public async Task ProcessMessageAsync(
         string routingKey,
         byte[] body,
         CancellationToken ct)

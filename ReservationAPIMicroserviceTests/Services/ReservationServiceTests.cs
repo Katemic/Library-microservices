@@ -13,7 +13,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Threading;
 
-namespace ReservationAPIMicroservice.Services.Tests
+namespace ReservationAPIMicroserviceTests.Service
 {
     [TestClass]
     public class ReservationServiceTests
