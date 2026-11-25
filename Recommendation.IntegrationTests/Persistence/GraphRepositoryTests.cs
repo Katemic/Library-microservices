@@ -75,6 +75,7 @@ public sealed class GraphRepositoryTests
             result.Current["deleted"].As<bool>());
     }
 
+
     [TestMethod]
     public async Task UpsertItem_ShouldCreateMetadataRelationships()
     {
@@ -95,29 +96,29 @@ public sealed class GraphRepositoryTests
         evt.Item.Genres =
         [
             new LookupDto
-            {
-                Id = 5,
-                Name = "Fantasy"
-            }
+        {
+            Id = 5,
+            Name = "Fantasy"
+        }
         ];
 
         evt.Item.Tags =
         [
             new LookupDto
-            {
-                Id = 6,
-                Name = "Adventure"
-            }
+        {
+            Id = 6,
+            Name = "Adventure"
+        }
         ];
 
         evt.Item.Creators =
         [
             new CreatorDto
-            {
-                Id = 15,
-                FirstName = "J.R.R.",
-                LastName = "Tolkien"
-            }
+        {
+            Id = 15,
+            FirstName = "J.R.R.",
+            LastName = "Tolkien"
+        }
         ];
 
         await TestInfrastructure.Repository.UpsertItemAsync(evt);
@@ -127,20 +128,20 @@ public sealed class GraphRepositoryTests
 
         var result = await session.RunAsync(
             """
-            MATCH (i:item {id: 200})
+        MATCH (i:item {id: 200})
 
-            OPTIONAL MATCH (i)-[:HAS_LANGUAGE]->(l:language)
-            OPTIONAL MATCH (i)-[:PUBLISHED_BY]->(p:publisher)
-            OPTIONAL MATCH (i)-[:GENRE_IS]->(g:genre)
-            OPTIONAL MATCH (i)-[:TAGGED_AS]->(t:tag)
-            OPTIONAL MATCH (i)-[:CREATED_BY]->(c:creator)
+        OPTIONAL MATCH (i)-[:HAS_LANGUAGE]->(l:language)
+        OPTIONAL MATCH (i)-[:PUBLISHED_BY]->(p:publisher)
+        OPTIONAL MATCH (i)-[:GENRE_IS]->(g:genre)
+        OPTIONAL MATCH (i)-[:TAGGED_AS]->(t:tag)
+        OPTIONAL MATCH (i)-[:CREATED_BY]->(c:creator)
 
-            RETURN l.id AS language,
-                   p.name AS publisher,
-                   g.id AS genre,
-                   t.id AS tag,
-                   c.last_name AS creator
-            """);
+        RETURN l.name AS language,
+               p.name AS publisher,
+               g.name AS genre,
+               t.name AS tag,
+               c.last_name AS creator
+        """);
 
         Assert.IsTrue(await result.FetchAsync());
 
@@ -165,8 +166,10 @@ public sealed class GraphRepositoryTests
             result.Current["creator"].As<string>());
     }
 
+
+
     [TestMethod]
-    public async Task UpsertItem_LanguageShouldOnlyHaveIdProperty()
+    public async Task UpsertItem_LanguageShouldOnlyHaveNameProperty()
     {
         var evt = CreateItem(200, 1, "The Hobbit");
 
@@ -183,19 +186,20 @@ public sealed class GraphRepositoryTests
 
         var result = await session.RunAsync(
             """
-            MATCH (l:language {id: 'English'})
-            RETURN keys(l) AS properties
-            """);
+        MATCH (l:language {name: 'English'})
+        RETURN keys(l) AS properties
+        """);
 
         Assert.IsTrue(await result.FetchAsync());
 
         var properties =
             result.Current["properties"].As<List<string>>();
 
-        CollectionAssert.AreEqual(
-            new[] { "id" },
+        CollectionAssert.AreEquivalent(
+            new[] { "name" },
             properties);
     }
+
 
     // =====================================
     // DELETION TESTS
