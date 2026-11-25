@@ -28,4 +28,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Reservation API unit tests
-        uses: ./ReservationAPIMicroservice/.github/actions/unit-tests
+        uses: ./.github/actions/reservation-unit-tests
