@@ -1,3 +1,4 @@
+
 name: Reservation API CI
 
 on:
@@ -27,5 +28,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Reservation API unit tests
-        uses: ./.github/actions/reservation-unit-tests
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ReservationAPIMicroserviceTests/ReservationAPIMicroserviceTests.csproj
+
+      - name: Build tests
+        run: dotnet build ReservationAPIMicroserviceTests/ReservationAPIMicroserviceTests.csproj --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test ReservationAPIMicroserviceTests/ReservationAPIMicroserviceTests.csproj --configuration Release --no-build --no-restore --verbosity normal
