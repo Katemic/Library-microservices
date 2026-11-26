@@ -219,7 +219,10 @@ public sealed class RecommendationQueriesTests
             "Deleted Book",
             genres: ["Fantasy"]);
 
+        // Deletion must have a newer version.
         deleted.EventType = "catalog.item.deleted";
+        deleted.ItemVersion = 2;
+        deleted.Item.ItemVersion = 2;
         deleted.Item.IsDeleted = true;
         deleted.Item.DeletedAtUtc = DateTime.UtcNow;
 
@@ -231,6 +234,7 @@ public sealed class RecommendationQueriesTests
             await _queries.GetPersonalisedCandidatesAsync(100, 10);
 
         Assert.AreEqual(0, result.Count);
+        Assert.IsFalse(result.Any(x => x.Id == 201));
     }
 
     [TestMethod]
