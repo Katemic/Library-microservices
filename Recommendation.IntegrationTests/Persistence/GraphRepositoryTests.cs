@@ -417,6 +417,74 @@ public sealed class GraphRepositoryTests
             1L,
             result.Current["loans"].As<long>());
     }
+    [TestMethod]
+    public async Task UpsertItem_OlderEvent_ShouldNotOverwriteNewerItem()
+    {
+        await TestInfrastructure.Repository.UpsertItemAsync(
+            CreateItem(200, 2, "Newer Title"));
+
+        await TestInfrastructure.Repository.UpsertItemAsync(
+            CreateItem(200, 1, "Older Title"));
+
+        await using var session =
+            TestInfrastructure.Driver.AsyncSession();
+
+        var result = await session.RunAsync(
+            """
+        MATCH (i:item {id: 200})
+        RETURN i.name AS name,
+               i.version AS version
+        """);
+
+        Assert.IsTrue(await result.FetchAsync());
+
+        Assert.AreEqual(
+            "Newer Title",
+            result.Current["name"].As<string>());
+
+        Assert.AreEqual(
+            2L,
+            result.Current["version"].As<long>());
+    }
+    [TestMethod]
+    public async Task UpsertItem_ShouldReplaceOldGenres()
+    {
+        var first = CreateItem(200, 1, "The Hobbit");
+
+        first.Item.Genres =
+        [
+            new LookupDto { Id = 1, Name = "Fantasy" }
+        ];
+
+        await TestInfrastructure.Repository.UpsertItemAsync(first);
+
+        var second = CreateItem(200, 2, "The Hobbit");
+
+        second.Item.Genres =
+        [
+            new LookupDto { Id = 2, Name = "Adventure" }
+        ];
+
+        await TestInfrastructure.Repository.UpsertItemAsync(second);
+
+        await using var session =
+            TestInfrastructure.Driver.AsyncSession();
+
+        var result = await session.RunAsync(
+            """
+        MATCH (i:item {id: 200})-[:GENRE_IS]->(g:genre)
+        RETURN collect(g.name) AS genres
+        """);
+
+        Assert.IsTrue(await result.FetchAsync());
+
+        var genres =
+            result.Current["genres"].As<List<string>>();
+
+        CollectionAssert.AreEqual(
+            new[] { "Adventure" },
+            genres);
+    }
 
     // =====================================
     // HELPERS
