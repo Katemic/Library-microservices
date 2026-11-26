@@ -4,9 +4,11 @@ metadata:
   name: catalog-api
   namespace: library
 spec:
-  replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: catalog-api
@@ -17,7 +19,7 @@ spec:
     spec:
       containers:
       - name: catalog-api
-        image: katemic/library-catalog:v0.1
+        image: katemic/library-catalog:keda-v1
         imagePullPolicy: Always
         env:
         - name: CATALOG_DB_PASSWORD
@@ -61,6 +63,8 @@ spec:
           value: amqp://$(RABBIT_USER):$(RABBIT_PASSWORD)@rabbitmq:5672/
         - name: RabbitMq__Exchange
           value: catalog.events
+        - name: Catalog__EnableOutboxWorker
+          value: "false"
         - name: Logging__Console__FormatterName
           value: json
         # Suppress repetitive Microsoft framework Information logs
@@ -71,7 +75,7 @@ spec:
           containerPort: 8080
         resources:
           requests:
-            cpu: 50m
+            cpu: 100m
             memory: 128Mi
           limits:
             memory: 750Mi

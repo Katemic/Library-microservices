@@ -4,7 +4,6 @@ metadata:
   name: recommendation-api
   namespace: library
 spec:
-  replicas: 1
   strategy:
     type: Recreate
   selector:
@@ -17,7 +16,7 @@ spec:
     spec:
       containers:
       - name: recommendation-api
-        image: katemic/library-recommendation:v0.1
+        image: katemic/library-recommendation:keda-v1
         imagePullPolicy: Always
         env:
         - name: NEO4J_PASSWORD
@@ -53,6 +52,8 @@ spec:
           value: $(RABBIT_USER)
         - name: RabbitMQ__Password
           value: $(RABBIT_PASSWORD)
+        - name: Recommendation__ProcessingDelayMs
+          value: "0"
         ports:
         - name: http
           containerPort: 8080

@@ -99,7 +99,7 @@ public sealed class GraphRepository
     // =========================================
 
     public async Task UpsertItemAsync(
-        CatalogItemEvent message)
+    CatalogItemEvent message)
     {
         var item = message.Item;
 
@@ -113,25 +113,30 @@ public sealed class GraphRepository
 
             var cursor = await tx.RunAsync(
                 """
-                MERGE (i:item {id: $id})
-                ON CREATE SET i.version = 0
+            MERGE (i:item {id: $id})
+            ON CREATE SET i.version = 0
 
-                WITH i
-                WHERE coalesce(i.version, 0) < $version
+            // Acquire write lock before checking version.
+            // The lock is retained until the transaction ends.
+            SET i._eventLock = true
+            REMOVE i._eventLock
 
-                SET i.name = $name,
-                    i.media_type = $mediaType,
-                    i.release_year = $releaseYear,
-                    i.description = $description,
-                    i.review_summary = $reviewSummary,
-                    i.image = $image,
-                    i.average_stars = $averageStars,
-                    i.version = $version,
-                    i.is_deleted = $isDeleted,
-                    i.deleted_at_utc = $deletedAtUtc
+            WITH i
+            WHERE coalesce(i.version, 0) < $version
 
-                RETURN i.id AS id
-                """,
+            SET i.name = $name,
+                i.media_type = $mediaType,
+                i.release_year = $releaseYear,
+                i.description = $description,
+                i.review_summary = $reviewSummary,
+                i.image = $image,
+                i.average_stars = $averageStars,
+                i.version = $version,
+                i.is_deleted = $isDeleted,
+                i.deleted_at_utc = $deletedAtUtc
+
+            RETURN i.id AS id
+            """,
                 new
                 {
                     id = message.ItemId,
@@ -167,18 +172,18 @@ public sealed class GraphRepository
             await RunAsync(
                 tx,
                 """
-                MATCH (i:item {id: $id})
-                OPTIONAL MATCH (i)-[r:
-                    HAS_LANGUAGE|
-                    PUBLISHED_BY|
-                    CREATED_BY|
-                    GENRE_IS|
-                    TAGGED_AS|
-                    IS_BOOK|
-                    IS_BOARDGAME
-                ]->()
-                DELETE r
-                """,
+            MATCH (i:item {id: $id})
+            OPTIONAL MATCH (i)-[r:
+                HAS_LANGUAGE|
+                PUBLISHED_BY|
+                CREATED_BY|
+                GENRE_IS|
+                TAGGED_AS|
+                IS_BOOK|
+                IS_BOARDGAME
+            ]->()
+            DELETE r
+            """,
                 new { id = message.ItemId });
 
             // ----------------------------------
@@ -190,11 +195,11 @@ public sealed class GraphRepository
                 await RunAsync(
                     tx,
                     """
-                    MATCH (i:item {id: $itemId})
-                    MERGE (l:language {id: $id})
-                    SET l.name = $name
-                    MERGE (i)-[:HAS_LANGUAGE]->(l)
-                    """,
+                MATCH (i:item {id: $itemId})
+                MERGE (l:language {id: $id})
+                SET l.name = $name
+                MERGE (i)-[:HAS_LANGUAGE]->(l)
+                """,
                     new
                     {
                         itemId = message.ItemId,
@@ -212,11 +217,11 @@ public sealed class GraphRepository
                 await RunAsync(
                     tx,
                     """
-                    MATCH (i:item {id: $itemId})
-                    MERGE (p:publisher {id: $id})
-                    SET p.name = $name
-                    MERGE (i)-[:PUBLISHED_BY]->(p)
-                    """,
+                MATCH (i:item {id: $itemId})
+                MERGE (p:publisher {id: $id})
+                SET p.name = $name
+                MERGE (i)-[:PUBLISHED_BY]->(p)
+                """,
                     new
                     {
                         itemId = message.ItemId,
@@ -232,17 +237,17 @@ public sealed class GraphRepository
             await RunAsync(
                 tx,
                 """
-                UNWIND $creators AS creator
-                MATCH (i:item {id: $itemId})
-                MERGE (c:creator {id: creator.id})
+            UNWIND $creators AS creator
+            MATCH (i:item {id: $itemId})
+            MERGE (c:creator {id: creator.id})
 
-                SET c.first_name = creator.firstName,
-                    c.last_name = creator.lastName,
-                    c.birthday = creator.birthday,
-                    c.description = creator.description
+            SET c.first_name = creator.firstName,
+                c.last_name = creator.lastName,
+                c.birthday = creator.birthday,
+                c.description = creator.description
 
-                MERGE (i)-[:CREATED_BY]->(c)
-                """,
+            MERGE (i)-[:CREATED_BY]->(c)
+            """,
                 new
                 {
                     itemId = message.ItemId,
@@ -266,12 +271,12 @@ public sealed class GraphRepository
             await RunAsync(
                 tx,
                 """
-                UNWIND $genres AS genre
-                MATCH (i:item {id: $itemId})
-                MERGE (g:genre {id: genre.id})
-                SET g.name = genre.name
-                MERGE (i)-[:GENRE_IS]->(g)
-                """,
+            UNWIND $genres AS genre
+            MATCH (i:item {id: $itemId})
+            MERGE (g:genre {id: genre.id})
+            SET g.name = genre.name
+            MERGE (i)-[:GENRE_IS]->(g)
+            """,
                 new
                 {
                     itemId = message.ItemId,
@@ -291,12 +296,12 @@ public sealed class GraphRepository
             await RunAsync(
                 tx,
                 """
-                UNWIND $tags AS tag
-                MATCH (i:item {id: $itemId})
-                MERGE (t:tag {id: tag.id})
-                SET t.name = tag.name
-                MERGE (i)-[:TAGGED_AS]->(t)
-                """,
+            UNWIND $tags AS tag
+            MATCH (i:item {id: $itemId})
+            MERGE (t:tag {id: tag.id})
+            SET t.name = tag.name
+            MERGE (i)-[:TAGGED_AS]->(t)
+            """,
                 new
                 {
                     itemId = message.ItemId,
@@ -318,15 +323,15 @@ public sealed class GraphRepository
                 await RunAsync(
                     tx,
                     """
-                    MATCH (i:item {id: $itemId})
-                    MERGE (b:book {id: $itemId})
+                MATCH (i:item {id: $itemId})
+                MERGE (b:book {id: $itemId})
 
-                    SET b.ISBN = $isbn,
-                        b.no_of_pages = $pages,
-                        b.version = $edition
+                SET b.ISBN = $isbn,
+                    b.no_of_pages = $pages,
+                    b.version = $edition
 
-                    MERGE (i)-[:IS_BOOK]->(b)
-                    """,
+                MERGE (i)-[:IS_BOOK]->(b)
+                """,
                     new
                     {
                         itemId = message.ItemId,
@@ -345,15 +350,15 @@ public sealed class GraphRepository
                 await RunAsync(
                     tx,
                     """
-                    MATCH (i:item {id: $itemId})
-                    MERGE (b:boardgame {id: $itemId})
+                MATCH (i:item {id: $itemId})
+                MERGE (b:boardgame {id: $itemId})
 
-                    SET b.no_of_players = $players,
-                        b.play_time = $playTime,
-                        b.age_group = $ageGroup
+                SET b.no_of_players = $players,
+                    b.play_time = $playTime,
+                    b.age_group = $ageGroup
 
-                    MERGE (i)-[:IS_BOARDGAME]->(b)
-                    """,
+                MERGE (i)-[:IS_BOARDGAME]->(b)
+                """,
                     new
                     {
                         itemId = message.ItemId,

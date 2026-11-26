@@ -1,0 +1,27 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: recommendation-scaledobject
+  namespace: library
+
+spec:
+  scaleTargetRef:
+    name: recommendation-api
+
+  minReplicaCount: 1
+  maxReplicaCount: 4
+
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120
+
+  triggers:
+    - type: prometheus
+      metricType: AverageValue
+      metadata:
+        serverAddress: http://prometheus.library.svc.cluster.local:9090
+        query: 'sum(rabbitmq_detailed_queue_messages_ready{job="rabbitmq-details",queue="recommendation.catalog",vhost="/"})'
+        threshold: "10"
+        ignoreNullValues: "false"

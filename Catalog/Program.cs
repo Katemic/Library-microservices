@@ -80,8 +80,12 @@ builder.Services.AddScoped<CatalogItemSnapshotFactory>();
 //RabbitMQ event publisher
 builder.Services.AddSingleton<CatalogEventPublisher>();
 
-//background worker for outbox processing
-builder.Services.AddHostedService<CatalogOutboxWorker>();
+// Background worker for outbox processing.
+if (builder.Configuration.GetValue<bool>(
+    "Catalog:EnableOutboxWorker", true))
+{
+    builder.Services.AddHostedService<CatalogOutboxWorker>();
+}
 
 // Add services to the container.
 

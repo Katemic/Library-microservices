@@ -1,0 +1,25 @@
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: catalog-scaledobject
+  namespace: library
+
+spec:
+  scaleTargetRef:
+    name: catalog-api
+
+  minReplicaCount: 1
+  maxReplicaCount: 4
+
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120
+
+  triggers:
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "65"

@@ -1,5 +1,6 @@
 # This is intentionally a single Deployment for a small Docker Desktop cluster.
-# Alloy tails only Catalog pods using Kubernetes API (no hostPath mounts).
+# Alloy tails Catalog API and Outbox Worker pods using Kubernetes API
+# (no hostPath mounts).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -40,8 +41,7 @@ metadata:
   namespace: library
 data:
   config.alloy: |
-    // Kubernetes API discovery is restricted to the library namespace
-    // and the Catalog app label.
+    // Discover both Catalog API and Outbox Worker pods.
     discovery.kubernetes "catalog_pods" {
       role = "pod"
       namespaces {
@@ -49,7 +49,7 @@ data:
       }
       selectors {
         role = "pod"
-        label = "app=catalog-api"
+        label = "app in (catalog-api,catalog-outbox-worker)"
       }
     }
 
@@ -59,20 +59,29 @@ data:
       rule {
         source_labels = ["__meta_kubernetes_pod_container_name"]
         action = "keep"
-        regex = "catalog-api"
+        regex = "catalog-api|catalog-outbox-worker"
       }
+
       rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
         target_label = "job"
-        replacement = "catalog-api"
       }
+
+      rule {
+        target_label = "service"
+        replacement = "catalog"
+      }
+
       rule {
         source_labels = ["__meta_kubernetes_namespace"]
         target_label = "namespace"
       }
+
       rule {
         source_labels = ["__meta_kubernetes_pod_name"]
         target_label = "pod"
       }
+
       rule {
         source_labels = ["__meta_kubernetes_pod_container_name"]
         target_label = "container"

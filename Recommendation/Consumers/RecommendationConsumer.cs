@@ -1,5 +1,4 @@
-﻿
-using System.Text.Json;
+﻿using System.Text.Json;
 using Neo4j.Driver;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -174,6 +173,13 @@ public sealed class RecommendationConsumer : BackgroundService
             global: false,
             cancellationToken: ct);
 
+        // Configurable processing delay for autoscaling tests.
+        // Defaults to zero during normal operation.
+        var processingDelayMs = Math.Max(
+            0,
+            _config.GetValue<int>(
+                "Recommendation:ProcessingDelayMs", 0));
+
         var consumer = new AsyncEventingBasicConsumer(channel);
 
         consumer.ReceivedAsync += async (_, args) =>
@@ -182,6 +188,13 @@ public sealed class RecommendationConsumer : BackgroundService
             {
                 var json = System.Text.Encoding.UTF8
                     .GetString(args.Body.ToArray());
+
+                // Simulate processing time during autoscaling tests.
+                if (queue == "recommendation.catalog" &&
+                    processingDelayMs > 0)
+                {
+                    await Task.Delay(processingDelayMs, ct);
+                }
 
                 await ProcessMessageAsync(
                     args.RoutingKey,
