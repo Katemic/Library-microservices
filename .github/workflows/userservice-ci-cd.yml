@@ -1,22 +1,30 @@
-name: UserService CI/CD
+
+name: UserService CI
 
 on:
   push:
-    branches:
-      - user-profile-update
-      - dev-integration-v1
+    paths:
+      - 'UserService/**'
+      - 'User.UnitTests/**'
+      - 'UserService.SecurityTests/**'
+      - '.github/workflows/userservice-ci.yml'
 
   pull_request:
-    branches:
-      - dev-integration-v1
+    paths:
+      - 'UserService/**'
+      - 'User.UnitTests/**'
+      - 'UserService.SecurityTests/**'
+      - '.github/workflows/userservice-ci.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
+    name: Build and Test UserService
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       # Checkout source code
@@ -37,58 +45,80 @@ jobs:
       - name: Build UserService
         run: dotnet build UserService/UserService.csproj --configuration Release --no-restore
 
-      # Run unit tests and generate test results
+      # Run unit tests
       - name: Run unit tests
         run: |
           dotnet test User.UnitTests/UserService.UnitTests.csproj \
             --configuration Release \
             --logger "console;verbosity=detailed" \
-            --logger "trx;logfilename=results.trx" \
+            --logger "trx;LogFileName=unit-tests.trx" \
             --results-directory "$GITHUB_WORKSPACE/TestResults"
 
-      # Display test results in GitHub Actions Summary
+      # Run security integration tests
+      - name: Run security integration tests
+        run: |
+          dotnet test UserService.SecurityTests/UserService.SecurityTests.csproj \
+            --configuration Release \
+            --logger "console;verbosity=detailed" \
+            --logger "trx;LogFileName=security-tests.trx" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults"
+
+      # Display results in GitHub Actions Summary
       - name: Generate test report
         if: always()
         run: |
           python3 <<'PY'
+          import glob
           import os
           import xml.etree.ElementTree as ET
 
-          path = "TestResults/results.trx"
+          ns = {
+              "t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"
+          }
+
+          files = sorted(glob.glob("TestResults/*.trx"))
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:
-              report.write("## UserService - Unit Test Report\n\n")
+              report.write("## UserService Test Report\n\n")
 
-              if not os.path.exists(path):
+              if not files:
                   report.write("No test results available.\n")
                   raise SystemExit(0)
 
-              root = ET.parse(path).getroot()
-              ns = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
+              for path in files:
+                  root = ET.parse(path).getroot()
+                  counters = root.find(".//t:Counters", ns)
 
-              counters = root.find(".//t:Counters", ns)
+                  report.write(f"### {os.path.basename(path)}\n\n")
 
-              report.write("| Total | Passed | Failed |\n")
-              report.write("|---|---|---|\n")
-              report.write(
-                  f"| {counters.get('total')} "
-                  f"| {counters.get('passed')} "
-                  f"| {counters.get('failed')} |\n\n"
-              )
+                  if counters is not None:
+                      report.write("| Total | Passed | Failed |\n")
+                      report.write("|---|---|---|\n")
+                      report.write(
+                          f"| {counters.get('total')} "
+                          f"| {counters.get('passed')} "
+                          f"| {counters.get('failed')} |\n\n"
+                      )
 
-              report.write("| Test | Result | Duration |\n")
-              report.write("|---|---|---|\n")
+                  report.write("| Test | Result | Duration |\n")
+                  report.write("|---|---|---|\n")
 
-              for test in root.findall(".//t:UnitTestResult", ns):
-                  name = test.get("testName")
-                  outcome = test.get("outcome")
-                  duration = test.get("duration")
+                  for test in root.findall(".//t:UnitTestResult", ns):
+                      name = test.get("testName")
+                      outcome = test.get("outcome")
+                      duration = test.get("duration")
 
-                  icon = "✅" if outcome == "Passed" else "❌" if outcome == "Failed" else "⚪"
+                      icon = (
+                          "✅" if outcome == "Passed"
+                          else "❌" if outcome == "Failed"
+                          else "⚪"
+                      )
 
-                  report.write(
-                      f"| {name} | {icon} {outcome} | {duration} |\n"
-                  )
+                      report.write(
+                          f"| {name} | {icon} {outcome} | {duration} |\n"
+                      )
+
+                  report.write("\n")
           PY
 
       # Save test results
