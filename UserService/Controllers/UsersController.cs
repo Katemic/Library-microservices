@@ -60,13 +60,15 @@ namespace UserService.Controllers
                 return NotFound();
 
             // Return the user's basic profile information.
+            // Include the user version without changing existing fields.
             return Ok(new
             {
                 user.Id,
                 user.FirstName,
                 user.LastName,
                 user.Email,
-                user.IsActive
+                user.IsActive,
+                user.Version
             });
         }
 
@@ -165,4 +167,3 @@ namespace UserService.Controllers
         }
     }
 }
-
