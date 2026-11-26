@@ -3,8 +3,27 @@ using Neo4j.Driver;
 using Recommendation.Consumers;
 using Recommendation.Persistence;
 using Recommendation.Services;
+using Asp.Versioning;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddApiVersioning(options =>
+    {
+        options.DefaultApiVersion = new ApiVersion(1, 0);
+
+        options.AssumeDefaultVersionWhenUnspecified = true;
+
+        options.ReportApiVersions = true;
+
+        options.ApiVersionReader =
+            new UrlSegmentApiVersionReader();
+    })
+    .AddApiExplorer(options =>
+    {
+        options.GroupNameFormat = "'v'VVV";
+        options.SubstituteApiVersionInUrl = true;
+    });
 
 // ========================================
 // NEO4J DATABASE CONNECTION
@@ -61,16 +80,32 @@ builder.Services.AddScoped<RecommendationService>();
 
 var app = builder.Build();
 
-// Basic API status endpoint.
-app.MapGet("/", () =>
+var apiVersionSet = app.NewApiVersionSet()
+    .HasApiVersion(new ApiVersion(1, 0))
+    .ReportApiVersions()
+    .Build();
+
+var api = app.MapGroup("/api/v{version:apiVersion}")
+    .WithApiVersionSet(apiVersionSet);
+
+// ========================================
+// API V1
+// ========================================
+
+var v1 = api.MapGroup("")
+    .HasApiVersion(new ApiVersion(1, 0));
+
+// Service status.
+v1.MapGet("/", () =>
     Results.Ok(new
     {
         Service = "Recommendation",
-        Status = "Running"
+        Status = "Running",
+        Version = "1.0"
     }));
 
-// Check actual Neo4j connectivity.
-app.MapGet("/health/neo4j", async (IDriver driver) =>
+// Neo4j health.
+v1.MapGet("/health/neo4j", async (IDriver driver) =>
 {
     try
     {
@@ -87,15 +122,20 @@ app.MapGet("/health/neo4j", async (IDriver driver) =>
     }
 });
 
-// Recommendations for a loaner (LLM-ranked, graph fallback).
-app.MapGet("/recommendations/{loanerId:int}", async (
+// Recommendations.
+v1.MapGet("/recommendations/{loanerId:int}", async (
     int loanerId,
     int? count,
     RecommendationService service,
     CancellationToken cancellationToken) =>
 {
     var take = Math.Clamp(count ?? 5, 1, 20);
-    return Results.Ok(await service.RecommendAsync(loanerId, take, cancellationToken));
+
+    return Results.Ok(
+        await service.RecommendAsync(
+            loanerId,
+            take,
+            cancellationToken));
 });
 
 app.Run();
