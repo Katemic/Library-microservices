@@ -1,0 +1,131 @@
+
+name: UserService CI
+
+on:
+  push:
+    paths:
+      - 'UserService/**'
+      - 'User.UnitTests/**'
+      - 'UserService.SecurityTests/**'
+      - '.github/workflows/userservice-ci.yml'
+
+  pull_request:
+    paths:
+      - 'UserService/**'
+      - 'User.UnitTests/**'
+      - 'UserService.SecurityTests/**'
+      - '.github/workflows/userservice-ci.yml'
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and Test UserService
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install .NET SDK
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Restore dependencies
+      - name: Restore UserService
+        run: dotnet restore UserService/UserService.csproj
+
+      # Build UserService
+      - name: Build UserService
+        run: dotnet build UserService/UserService.csproj --configuration Release --no-restore
+
+      # Run unit tests
+      - name: Run unit tests
+        run: |
+          dotnet test User.UnitTests/UserService.UnitTests.csproj \
+            --configuration Release \
+            --logger "console;verbosity=detailed" \
+            --logger "trx;LogFileName=unit-tests.trx" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults"
+
+      # Run security integration tests
+      - name: Run security integration tests
+        run: |
+          dotnet test UserService.SecurityTests/UserService.SecurityTests.csproj \
+            --configuration Release \
+            --logger "console;verbosity=detailed" \
+            --logger "trx;LogFileName=security-tests.trx" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults"
+
+      # Display results in GitHub Actions Summary
+      - name: Generate test report
+        if: always()
+        run: |
+          python3 <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          ns = {
+              "t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"
+          }
+
+          files = sorted(glob.glob("TestResults/*.trx"))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as report:
+              report.write("## UserService Test Report\n\n")
+
+              if not files:
+                  report.write("No test results available.\n")
+                  raise SystemExit(0)
+
+              for path in files:
+                  root = ET.parse(path).getroot()
+                  counters = root.find(".//t:Counters", ns)
+
+                  report.write(f"### {os.path.basename(path)}\n\n")
+
+                  if counters is not None:
+                      report.write("| Total | Passed | Failed |\n")
+                      report.write("|---|---|---|\n")
+                      report.write(
+                          f"| {counters.get('total')} "
+                          f"| {counters.get('passed')} "
+                          f"| {counters.get('failed')} |\n\n"
+                      )
+
+                  report.write("| Test | Result | Duration |\n")
+                  report.write("|---|---|---|\n")
+
+                  for test in root.findall(".//t:UnitTestResult", ns):
+                      name = test.get("testName")
+                      outcome = test.get("outcome")
+                      duration = test.get("duration")
+
+                      icon = (
+                          "✅" if outcome == "Passed"
+                          else "❌" if outcome == "Failed"
+                          else "⚪"
+                      )
+
+                      report.write(
+                          f"| {name} | {icon} {outcome} | {duration} |\n"
+                      )
+
+                  report.write("\n")
+          PY
+
+      # Save test results
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: UserService-TestResults
+          path: TestResults/
+          if-no-files-found: warn
