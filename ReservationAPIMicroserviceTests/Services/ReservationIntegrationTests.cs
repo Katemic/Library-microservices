@@ -18,6 +18,8 @@ public class ReservationsIntegrationTests
     private HttpClient _client = null!;
     int i = 0;
 
+    private string apiVersion = "/api/v1/reservations";
+
     [TestInitialize]
     public void Setup()
     {
@@ -114,7 +116,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.GetAsync(
-            "/api/reservations");
+            apiVersion);
 
         // Assert
         Assert.AreEqual(
@@ -142,7 +144,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.GetAsync(
-            "/api/reservations");
+            apiVersion);
 
         // Assert
         Assert.AreEqual(
@@ -165,7 +167,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.PostAsJsonAsync(
-            "/api/reservations",
+            apiVersion,
             request);
 
         // Assert - HTTP response
@@ -211,7 +213,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.DeleteAsync(
-            $"/api/reservations/{reservationId}");
+            $"{apiVersion}/{reservationId}");
 
         // Assert - HTTP response
         Assert.AreEqual(
@@ -241,7 +243,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.DeleteAsync(
-            $"/api/reservations/{reservationId}");
+            $"{apiVersion}/{reservationId}");
 
         // Assert
         Assert.AreEqual(
@@ -257,7 +259,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.GetAsync(
-            $"/api/reservations/{reservationId}");
+            $"{apiVersion}/{reservationId}");
 
         // Assert
         Assert.AreEqual(
@@ -282,7 +284,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.GetAsync(
-            $"/api/reservations/{reservationId}");
+            $"{apiVersion} /{reservationId}");
 
         // Assert
         Assert.AreEqual(
@@ -303,7 +305,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.PostAsJsonAsync(
-            "/api/reservations",
+            apiVersion,
             request);
 
         // Assert
@@ -329,7 +331,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.PostAsJsonAsync(
-            "/api/reservations",
+            apiVersion,
             request);
 
         // Assert
@@ -356,7 +358,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.PostAsJsonAsync(
-            "/api/reservations",
+            apiVersion,
             request);
 
         // Assert
@@ -401,7 +403,7 @@ public class ReservationsIntegrationTests
 
         // Act
         var response = await _client.PostAsJsonAsync(
-            "/api/reservations",
+            apiVersion,
             request);
 
         // Assert
