@@ -1,3 +1,4 @@
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using UserService.Services;
@@ -67,19 +68,6 @@ namespace UserService.Controllers
                 user.Email,
                 user.IsActive
             });
-        }
-
-        // POST: api/users
-        // Only administrators can access this endpoint.
-        // User creation will later be integrated with Keycloak.
-        [Authorize(Policy = "AdminOnly")]
-        [HttpPost]
-        public IActionResult CreateUser(CreateUserDto dto)
-        {
-            // TODO: Connect user creation to OAuth/login.
-            // Return 501 because user creation is not implemented yet.
-            return StatusCode(501,
-                "User creation is not implemented yet.");
         }
 
         // PUT: api/users/{id}
@@ -177,3 +165,4 @@ namespace UserService.Controllers
         }
     }
 }
+
