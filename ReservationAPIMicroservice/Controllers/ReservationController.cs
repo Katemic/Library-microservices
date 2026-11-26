@@ -1,4 +1,5 @@
 ﻿
+using Asp.Versioning;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReservationAPIMicroservice.Data;
@@ -11,7 +12,8 @@ using ReservationAPIMicroservice.Services.RabbitMQ;
 namespace ReservationAPIMicroservice.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[ApiVersion(1.0)]
+[Route("api/v{version:apiVersion}/[controller]")]
 public class ReservationsController : ControllerBase
 {
     private readonly IReservationService _reservationService;

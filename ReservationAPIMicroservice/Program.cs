@@ -5,6 +5,7 @@ using ReservationAPIMicroservice.Data;
 using ReservationAPIMicroservice.Services;
 using ReservationAPIMicroservice.Services.RabbitMQ;
 using System.Reflection;
+using Asp.Versioning;
 
 var builder = WebApplication.CreateBuilder(args);
 Console.WriteLine("Starting app");
@@ -18,6 +19,16 @@ builder.Services.AddDbContext<ReservationDbContext>(options =>
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services
+    .AddApiVersioning(options =>
+    {
+        options.DefaultApiVersion = new ApiVersion(1, 0);
+        options.AssumeDefaultVersionWhenUnspecified = true;
+        options.ReportApiVersions = true;
+        options.ApiVersionReader = new UrlSegmentApiVersionReader();
+    })
+    .AddMvc();
 
 // RabbitMQ
 var rabbitHost = builder.Configuration["RabbitMQ:Host"] ?? "localhost";
@@ -42,7 +53,9 @@ builder.Services.AddSingleton<IConnection>(_ =>
 builder.Services.AddScoped<
     IReservationService,
     ReservationService>();
-builder.Services.AddSingleton<RabbitMqPublisher>();
+builder.Services.AddScoped<
+    IRabbitMqPublisher,
+    RabbitMqPublisher>();
 builder.Services.AddHostedService<InventoryConsumerService>();
 builder.Services.AddHostedService<ItemConsumerService>();
 
